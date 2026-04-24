@@ -78,6 +78,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [demoOtp, setDemoOtp] = useState("");
   const [profile, setProfile] = useState(() => loadFromStorage("te_profile", { name: "", homeCity: "", budget: "", interests: [] }));
+  const [profileSaving, setProfileSaving] = useState(false);
 
   const idleTimer = useRef(null);
 
@@ -185,17 +186,45 @@ function App() {
   }
 
   async function saveProfile() {
-    await fetch(`${API_BASE_URL}/api/profile`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify(profile),
-    });
-    updateProfile(profile);
-    updateStep("home");
+    setProfileSaving(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/profile`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(profile),
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        updateProfile({ name: saved.name ?? "", homeCity: saved.homeCity ?? "", budget: saved.budget ?? "", interests: saved.interests ?? [] });
+      }
+    } finally {
+      setProfileSaving(false);
+      updateStep("home");
+    }
+  }
+
+  async function goToEditProfile() {
+    updateStep("profile");
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/profile`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const d = await res.json();
+        updateProfile({ name: d.name ?? "", homeCity: d.homeCity ?? "", budget: d.budget ?? "", interests: d.interests ?? [] });
+      }
+    } catch (_) {}
   }
 
   return (
-    <main className="relative min-h-screen overflow-x-hidden px-4 py-6 md:px-8 md:py-10 lg:py-12">
+    <>
+      {step === "home" ? (
+        <Home
+          profile={profile}
+          identifier={identifier}
+          onEditProfile={goToEditProfile}
+          onLogout={logout}
+        />
+      ) : (
+      <main className="relative min-h-screen overflow-x-hidden px-4 py-6 md:px-8 md:py-10 lg:py-12">
       <div className="pointer-events-none absolute inset-0">
         <div className="scenic-bg" aria-hidden="true">
           <div className="scenic-photo" />
@@ -314,18 +343,12 @@ function App() {
                 setProfile={updateProfile}
                 onSave={saveProfile}
                 onSkip={() => updateStep("home")}
-              />
-            )}
-            {step === "home" && (
-              <Home
-                profile={profile}
-                identifier={identifier}
-                onEditProfile={() => updateStep("profile")}
+                saving={profileSaving}
               />
             )}
           </div>
 
-          {step !== "home" && step !== "profile" ? (
+          {step !== "profile" ? (
             <div className="mt-6 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-slate-200">
               <p className="leading-6">{message}</p>
             </div>
@@ -333,6 +356,8 @@ function App() {
         </section>
       </div>
     </main>
+      )}
+    </>
   );
 }
 

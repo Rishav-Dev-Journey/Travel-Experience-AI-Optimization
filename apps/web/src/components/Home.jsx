@@ -1,10 +1,10 @@
 const INTEREST_SUGGESTIONS = {
-  Beach: { dest: "Goa", tag: "Beach getaway", color: "text-cyan-200", bg: "bg-cyan-300/10 border-cyan-300/25" },
-  Mountains: { dest: "Manali", tag: "Mountain escape", color: "text-blue-200", bg: "bg-blue-300/10 border-blue-300/25" },
-  Culture: { dest: "Varanasi", tag: "Cultural immersion", color: "text-orange-200", bg: "bg-orange-300/10 border-orange-300/25" },
-  Adventure: { dest: "Rishikesh", tag: "Adventure hub", color: "text-emerald-200", bg: "bg-emerald-300/10 border-emerald-300/25" },
-  Food: { dest: "Mumbai", tag: "Food trail", color: "text-yellow-200", bg: "bg-yellow-300/10 border-yellow-300/25" },
-  Wellness: { dest: "Kerala", tag: "Wellness retreat", color: "text-purple-200", bg: "bg-purple-300/10 border-purple-300/25" },
+  Beach: { dest: "Goa", tag: "Beach getaway", desc: "Sun, sand & seafood on India's favourite coast", color: "text-cyan-200", bg: "bg-cyan-300/10 border-cyan-300/25", emoji: "🏖️" },
+  Mountains: { dest: "Manali", tag: "Mountain escape", desc: "Snow peaks, river valleys & adventure trails", color: "text-blue-200", bg: "bg-blue-300/10 border-blue-300/25", emoji: "🏔️" },
+  Culture: { dest: "Varanasi", tag: "Cultural immersion", desc: "Ancient ghats, temples & spiritual heritage", color: "text-orange-200", bg: "bg-orange-300/10 border-orange-300/25", emoji: "🏛️" },
+  Adventure: { dest: "Rishikesh", tag: "Adventure hub", desc: "Rafting, bungee & yoga in the Himalayas", color: "text-emerald-200", bg: "bg-emerald-300/10 border-emerald-300/25", emoji: "🧗" },
+  Food: { dest: "Mumbai", tag: "Food trail", desc: "Street food, fine dining & coastal flavours", color: "text-yellow-200", bg: "bg-yellow-300/10 border-yellow-300/25", emoji: "🍜" },
+  Wellness: { dest: "Kerala", tag: "Wellness retreat", desc: "Ayurveda, backwaters & serene hill stations", color: "text-purple-200", bg: "bg-purple-300/10 border-purple-300/25", emoji: "🧘" },
 };
 
 const BUDGET_LABEL = {
@@ -13,85 +13,143 @@ const BUDGET_LABEL = {
   Luxury: { label: "Luxury seeker", icon: "🌟" },
 };
 
-export default function Home({ profile, identifier, onEditProfile }) {
+const QUICK_ACTIONS = [
+  { label: "Plan a Trip", icon: "🗺️", soon: true },
+  { label: "Find Flights", icon: "✈️", soon: true },
+  { label: "Book a Stay", icon: "🏨", soon: true },
+  { label: "AI Itinerary", icon: "🤖", soon: true },
+];
+
+export default function Home({ profile, identifier, onEditProfile, onLogout }) {
   const firstName = profile.name ? profile.name.split(" ")[0] : null;
-  const suggestions = profile.interests.slice(0, 3).map((i) => INTEREST_SUGGESTIONS[i]).filter(Boolean);
+  const suggestions = profile.interests.map((i) => INTEREST_SUGGESTIONS[i]).filter(Boolean);
   const budgetInfo = BUDGET_LABEL[profile.budget];
 
   return (
-    <div className="animate-floatIn">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-widest text-cyan-300">AI Travel Workspace</p>
-          <h2 className="mt-1 font-display text-2xl text-white">
-            {firstName ? `Welcome back, ${firstName} 👋` : "Welcome Aboard 🎉"}
-          </h2>
-          <p className="mt-1 text-sm text-slate-400">{identifier}</p>
+    <div className="relative min-h-screen overflow-x-hidden">
+
+      {/* Background */}
+      <div className="pointer-events-none fixed inset-0 z-0">
+        <div className="home-bg" aria-hidden="true" />
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-950/60 via-slate-950/40 to-slate-950/85" />
+        <div className="absolute left-[-9rem] top-8 h-72 w-72 rounded-full bg-cyan-400/20 blur-3xl animate-pulseSoft" />
+        <div className="absolute bottom-6 right-[-8rem] h-80 w-80 rounded-full bg-emerald-400/10 blur-3xl animate-pulseSoft" />
+      </div>
+
+      {/* Navbar */}
+      <nav className="relative z-10 flex items-center justify-between px-6 py-4 md:px-10">
+        {/* Animated Travel.AI logo — top left */}
+        <div className="home-logo flex items-center gap-1.5">
+          <span className="home-logo-icon text-xl">✈️</span>
+          <span className="font-display text-xl font-bold tracking-tight text-white">
+            Travel<span className="home-logo-ai text-cyan-300">.AI</span>
+          </span>
         </div>
-        <button
-          type="button"
-          onClick={onEditProfile}
-          className="shrink-0 rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:border-white/30 hover:text-white"
-        >
-          Edit Profile
-        </button>
-      </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {profile.homeCity ? (
-          <div className="rounded-xl border border-white/10 bg-slate-900/50 p-3">
-            <p className="text-[10px] uppercase tracking-widest text-slate-500">Home base</p>
-            <p className="mt-1 text-sm font-semibold text-white">{profile.homeCity}</p>
-          </div>
-        ) : null}
-        {budgetInfo ? (
-          <div className="rounded-xl border border-white/10 bg-slate-900/50 p-3">
-            <p className="text-[10px] uppercase tracking-widest text-slate-500">Budget</p>
-            <p className="mt-1 text-sm font-semibold text-white">{budgetInfo.icon} {budgetInfo.label}</p>
-          </div>
-        ) : null}
-        {profile.interests.length > 0 ? (
-          <div className="col-span-2 rounded-xl border border-white/10 bg-slate-900/50 p-3">
-            <p className="text-[10px] uppercase tracking-widest text-slate-500">Interests</p>
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {profile.interests.map((i) => (
-                <span key={i} className="rounded-lg bg-white/10 px-2 py-0.5 text-xs text-slate-200">{i}</span>
-              ))}
-            </div>
-          </div>
-        ) : null}
-      </div>
+        <div className="flex items-center gap-2">
+          <span className="hidden text-xs text-slate-400 sm:block">{identifier}</span>
+          <button
+            type="button"
+            onClick={onEditProfile}
+            className="rounded-xl border border-white/15 bg-slate-900/60 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:border-white/30 hover:text-white"
+          >
+            Edit Profile
+          </button>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="rounded-xl border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-400/20 hover:text-red-200"
+          >
+            Logout
+          </button>
+        </div>
+      </nav>
 
-      {suggestions.length > 0 ? (
-        <div className="mt-5">
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">AI Suggestions for you</p>
-          <div className="mt-2 grid gap-2">
-            {suggestions.map(({ dest, tag, color, bg }) => (
-              <div key={dest} className={`flex items-center justify-between rounded-xl border p-3 ${bg}`}>
-                <div>
-                  <p className={`text-sm font-semibold ${color}`}>{dest}</p>
-                  <p className="text-xs text-slate-400">{tag}</p>
+      <div className="relative z-10 mx-auto max-w-4xl px-6 pb-16 md:px-10">
+        {/* Hero greeting */}
+        <div className="mt-4">
+          <p className="text-xs uppercase tracking-widest text-cyan-300">AI Travel Workspace</p>
+          <h1 className="mt-2 font-display text-3xl text-white md:text-4xl">
+            {firstName ? `Welcome back, ${firstName} 👋` : "Welcome Aboard 🎉"}
+          </h1>
+          <p className="mt-1 text-sm text-slate-400">Your personalised travel dashboard is ready.</p>
+        </div>
+
+        {/* Profile summary */}
+        {(profile.homeCity || budgetInfo || profile.interests.length > 0) ? (
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {profile.homeCity ? (
+              <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4">
+                <p className="text-[10px] uppercase tracking-widest text-slate-500">Home base</p>
+                <p className="mt-1 text-sm font-semibold text-white">📍 {profile.homeCity}</p>
+              </div>
+            ) : null}
+            {budgetInfo ? (
+              <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4">
+                <p className="text-[10px] uppercase tracking-widest text-slate-500">Budget</p>
+                <p className="mt-1 text-sm font-semibold text-white">{budgetInfo.icon} {budgetInfo.label}</p>
+              </div>
+            ) : null}
+            {profile.interests.length > 0 ? (
+              <div className="col-span-2 rounded-2xl border border-white/10 bg-slate-900/50 p-4">
+                <p className="text-[10px] uppercase tracking-widest text-slate-500">Interests</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {profile.interests.map((i) => (
+                    <span key={i} className="rounded-lg bg-white/10 px-2.5 py-1 text-xs text-slate-200">{i}</span>
+                  ))}
                 </div>
-                <span className="text-xs text-slate-500">AI pick →</span>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="mt-6 rounded-2xl border border-dashed border-white/15 bg-slate-900/30 p-6 text-center">
+            <p className="text-sm text-slate-400">Your profile is empty. Set it up to get AI-powered suggestions.</p>
+            <button
+              type="button"
+              onClick={onEditProfile}
+              className="mt-3 inline-flex h-9 items-center justify-center rounded-xl bg-cyan-300/15 px-4 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-300/25"
+            >
+              Set up profile →
+            </button>
+          </div>
+        )}
+
+        {/* Quick actions */}
+        <div className="mt-8">
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Quick Actions</p>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {QUICK_ACTIONS.map(({ label, icon }) => (
+              <div
+                key={label}
+                className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/50 p-4 opacity-60"
+              >
+                <span className="text-2xl">{icon}</span>
+                <span className="text-xs font-semibold text-slate-300">{label}</span>
+                <span className="rounded-full bg-slate-700/60 px-2 py-0.5 text-[10px] text-slate-400">Coming soon</span>
               </div>
             ))}
           </div>
         </div>
-      ) : (
-        <div className="mt-5 rounded-xl border border-white/10 bg-slate-900/40 p-4 text-center">
-          <p className="text-sm text-slate-400">Complete your profile to get AI-powered travel suggestions.</p>
-          <button
-            type="button"
-            onClick={onEditProfile}
-            className="mt-3 inline-flex h-9 items-center justify-center rounded-xl bg-cyan-300/15 px-4 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-300/25"
-          >
-            Set up profile
-          </button>
-        </div>
-      )}
 
-      <div className="mt-4 rounded-xl border border-white/10 bg-slate-900/40 p-3 text-center">
-        <p className="text-xs text-slate-500">Full itinerary planner & booking coming soon</p>
+        {/* AI Suggestions */}
+        <div className="mt-8">
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+            {suggestions.length > 0 ? "AI Picks for You" : "Popular Destinations"}
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {(suggestions.length > 0 ? suggestions : Object.values(INTEREST_SUGGESTIONS)).map(({ dest, tag, desc, color, bg, emoji }) => (
+              <div key={dest} className={`rounded-2xl border p-4 ${bg}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xl">{emoji}</span>
+                  <span className="text-[10px] uppercase tracking-widest text-slate-500">AI pick</span>
+                </div>
+                <p className={`mt-2 font-display text-base font-semibold ${color}`}>{dest}</p>
+                <p className="text-xs text-slate-400">{tag}</p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

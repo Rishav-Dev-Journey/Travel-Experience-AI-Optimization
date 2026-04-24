@@ -13,7 +13,7 @@ const BUDGETS = [
   { label: "Luxury", icon: "🌟", desc: "Resorts & fine dining" },
 ];
 
-export default function ProfileSetup({ profile, setProfile, onSave, onSkip }) {
+export default function ProfileSetup({ profile, setProfile, onSave, onSkip, saving }) {
   function toggleInterest(label) {
     setProfile((prev) => ({
       ...prev,
@@ -125,10 +125,10 @@ export default function ProfileSetup({ profile, setProfile, onSave, onSkip }) {
         <button
           type="button"
           onClick={onSave}
-          disabled={!profile.name.trim()}
+          disabled={!profile.name.trim() || saving}
           className="inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-cyan-300 px-5 text-sm font-semibold text-slate-900 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Save &amp; Continue
+          {saving ? "Saving..." : "Save & Continue"}
         </button>
       </div>
     </div>
