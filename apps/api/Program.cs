@@ -11,7 +11,6 @@ builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
 builder.Services.AddSingleton<PostgresAuthStore>();
 builder.Services.AddSingleton<OtpAuthService>();
 builder.Services.AddSingleton<IEmailOtpSender, AzureEmailOtpSender>();
-builder.Services.AddSingleton<TokenStore>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -96,13 +95,13 @@ app.MapPost("/api/auth/request-otp", async (RequestOtpRequest request, OtpAuthSe
   });
 });
 
-app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest request, OtpAuthService authService, TokenStore tokenStore, CancellationToken cancellationToken) =>
+app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest request, OtpAuthService authService, PostgresAuthStore authStore, CancellationToken cancellationToken) =>
 {
   var result = await authService.VerifyChallengeAsync(request.ChallengeId.Trim(), request.Otp.Trim(), cancellationToken);
 
   if (result is OtpVerificationResult.Success success)
   {
-    tokenStore.Store(success.Token, success.Value);
+    await authStore.StoreSessionAsync(success.Token, success.Value.UserId, success.ExpiresAt, cancellationToken);
     return Results.Ok(new
     {
       token = success.Token,
@@ -130,26 +129,24 @@ app.MapGet("/api/info", () => Results.Ok(new
   version = "1.0.0"
 }));
 
-app.MapGet("/api/profile", async (HttpRequest request, TokenStore tokenStore, PostgresAuthStore authStore, CancellationToken cancellationToken) =>
+app.MapGet("/api/profile", async (HttpRequest request, PostgresAuthStore authStore, CancellationToken cancellationToken) =>
 {
-  var userId = tokenStore.Resolve(request);
+  var token = request.Headers.Authorization.FirstOrDefault()?.Replace("Bearer ", "").Trim();
+  if (string.IsNullOrEmpty(token)) return Results.Unauthorized();
+  var userId = await authStore.ResolveSessionAsync(token, cancellationToken);
   if (userId is null) return Results.Unauthorized();
 
   var profile = await authStore.GetProfileAsync(userId.Value, cancellationToken);
   if (profile is null) return Results.Ok(new { name = (string?)null, homeCity = (string?)null, budget = (string?)null, interests = Array.Empty<string>() });
 
-  return Results.Ok(new
-  {
-    name = profile.Name,
-    homeCity = profile.HomeCity,
-    budget = profile.Budget,
-    interests = profile.Interests
-  });
+  return Results.Ok(new { name = profile.Name, homeCity = profile.HomeCity, budget = profile.Budget, interests = profile.Interests });
 });
 
-app.MapPut("/api/profile", async (UpsertProfileRequest request, HttpRequest httpRequest, TokenStore tokenStore, PostgresAuthStore authStore, CancellationToken cancellationToken) =>
+app.MapPut("/api/profile", async (UpsertProfileRequest request, HttpRequest httpRequest, PostgresAuthStore authStore, CancellationToken cancellationToken) =>
 {
-  var userId = tokenStore.Resolve(httpRequest);
+  var token = httpRequest.Headers.Authorization.FirstOrDefault()?.Replace("Bearer ", "").Trim();
+  if (string.IsNullOrEmpty(token)) return Results.Unauthorized();
+  var userId = await authStore.ResolveSessionAsync(token, cancellationToken);
   if (userId is null) return Results.Unauthorized();
 
   var profile = await authStore.UpsertProfileAsync(
@@ -160,13 +157,7 @@ app.MapPut("/api/profile", async (UpsertProfileRequest request, HttpRequest http
     request.Interests ?? [],
     cancellationToken);
 
-  return Results.Ok(new
-  {
-    name = profile.Name,
-    homeCity = profile.HomeCity,
-    budget = profile.Budget,
-    interests = profile.Interests
-  });
+  return Results.Ok(new { name = profile.Name, homeCity = profile.HomeCity, budget = profile.Budget, interests = profile.Interests });
 });
 
 app.Run();

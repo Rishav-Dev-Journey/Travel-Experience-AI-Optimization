@@ -174,7 +174,10 @@ function App() {
       } else {
         updateStep("home");
         fetch(`${API_BASE_URL}/api/profile`, { headers: { Authorization: `Bearer ${data.token}` } })
-          .then((r) => r.ok ? r.json() : null)
+          .then((r) => {
+            if (r.status === 401) { logout(); return null; }
+            return r.ok ? r.json() : null;
+          })
           .then((d) => { if (d) updateProfile({ name: d.name ?? "", homeCity: d.homeCity ?? "", budget: d.budget ?? "", interests: d.interests ?? [] }); })
           .catch(() => {});
       }
@@ -193,6 +196,7 @@ function App() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(profile),
       });
+      if (res.status === 401) { logout(); return; }
       if (res.ok) {
         const saved = await res.json();
         updateProfile({ name: saved.name ?? "", homeCity: saved.homeCity ?? "", budget: saved.budget ?? "", interests: saved.interests ?? [] });
@@ -207,6 +211,7 @@ function App() {
     updateStep("profile");
     try {
       const res = await fetch(`${API_BASE_URL}/api/profile`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.status === 401) { logout(); return; }
       if (res.ok) {
         const d = await res.json();
         updateProfile({ name: d.name ?? "", homeCity: d.homeCity ?? "", budget: d.budget ?? "", interests: d.interests ?? [] });

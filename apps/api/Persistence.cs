@@ -83,6 +83,15 @@ internal sealed class PostgresAuthStore
         interests text[] not null default '{}',
         updated_at timestamptz not null
       );
+
+      create table if not exists user_sessions (
+        token text primary key,
+        user_id uuid not null references auth_users(id) on delete cascade,
+        expires_at timestamptz not null,
+        created_at timestamptz not null
+      );
+
+      create index if not exists ix_user_sessions_user_id on user_sessions(user_id);
       """;
 
     await createSchemaCommand.ExecuteNonQueryAsync(cancellationToken);
@@ -372,5 +381,36 @@ internal sealed class PostgresAuthStore
       reader.GetString(2),
       ReadUtcOffset(reader, 3),
       reader.IsDBNull(4) ? null : ReadUtcOffset(reader, 4));
+  }
+
+  public async Task StoreSessionAsync(string token, Guid userId, DateTimeOffset expiresAt, CancellationToken cancellationToken = default)
+  {
+    await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+    await using var command = connection.CreateCommand();
+    command.CommandText = """
+      insert into user_sessions (token, user_id, expires_at, created_at)
+      values (@token, @user_id, @expires_at, @created_at)
+      on conflict (token) do nothing;
+      """;
+    command.Parameters.AddWithValue("token", token);
+    command.Parameters.AddWithValue("user_id", userId);
+    command.Parameters.AddWithValue("expires_at", expiresAt);
+    command.Parameters.AddWithValue("created_at", DateTimeOffset.UtcNow);
+    await command.ExecuteNonQueryAsync(cancellationToken);
+  }
+
+  public async Task<Guid?> ResolveSessionAsync(string token, CancellationToken cancellationToken = default)
+  {
+    await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+    await using var command = connection.CreateCommand();
+    command.CommandText = """
+      select user_id from user_sessions
+      where token = @token and expires_at > now()
+      limit 1;
+      """;
+    command.Parameters.AddWithValue("token", token);
+    await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+    if (!await reader.ReadAsync(cancellationToken)) return null;
+    return reader.GetGuid(0);
   }
 }
