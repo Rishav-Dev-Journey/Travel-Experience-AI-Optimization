@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
+import AuthEmail from "./components/AuthEmail";
+import AuthOtp from "./components/AuthOtp";
+import ProfileSetup from "./components/ProfileSetup";
+import Home from "./components/Home";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5080";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5080";
 
 const TRAVEL_BACKGROUND_IMAGES = [
   "https://source.unsplash.com/1200x900/?kerala,temple&sig=1",
@@ -38,13 +41,6 @@ const TRAVEL_BACKGROUND_IMAGES = [
   "https://source.unsplash.com/1200x900/?india,monsoon,landscape&sig=32",
 ];
 
-const INTERESTS = ["Beach", "Mountains", "Culture", "Adventure", "Food", "Wellness"];
-const BUDGETS = ["Budget", "Mid-range", "Luxury"];
-
-function normalizeIdentifier(value) {
-  return value.trim();
-}
-
 function App() {
   const [identifier, setIdentifier] = useState("");
   const [otp, setOtp] = useState("");
@@ -55,49 +51,12 @@ function App() {
   const [message, setMessage] = useState("Request an OTP to start the login flow.");
   const [loading, setLoading] = useState(false);
   const [demoOtp, setDemoOtp] = useState("");
-  const [copied, setCopied] = useState(false);
   const [profile, setProfile] = useState({ name: "", homeCity: "", budget: "", interests: [] });
 
   const canVerify = useMemo(
     () => challengeId.length > 0 && otp.trim().length > 0,
     [challengeId, otp],
   );
-
-  function copyDemoOtp() {
-    navigator.clipboard.writeText(demoOtp);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  function toggleInterest(interest) {
-    setProfile((prev) => ({
-      ...prev,
-      interests: prev.interests.includes(interest)
-        ? prev.interests.filter((i) => i !== interest)
-        : [...prev.interests, interest],
-    }));
-  }
-
-  async function saveProfile() {
-    await fetch(`${API_BASE_URL}/api/profile`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify(profile),
-    });
-    setStep("home");
-  }
-
-  async function loadProfile() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/profile`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setProfile({ name: data.name ?? "", homeCity: data.homeCity ?? "", budget: data.budget ?? "", interests: data.interests ?? [] });
-      }
-    } catch (_) {}
-  }
 
   async function requestOtp(event) {
     event.preventDefault();
@@ -110,12 +69,8 @@ function App() {
       const response = await fetch(`${API_BASE_URL}/api/auth/request-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          identifier: normalizeIdentifier(identifier),
-          channel: "email",
-        }),
+        body: JSON.stringify({ identifier: identifier.trim(), channel: "email" }),
       });
-
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || "Unable to request OTP.");
 
@@ -143,17 +98,16 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ challengeId, otp: otp.trim() }),
       });
-
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || "Unable to verify OTP.");
 
       setToken(data.token);
       setMessage(`Logged in as ${data.user.identifier} via ${data.user.channel}.`);
+
       if (data.isNewUser) {
         setStep("profile");
       } else {
         setStep("home");
-        // load existing profile for returning users — but token isn't in state yet, pass directly
         fetch(`${API_BASE_URL}/api/profile`, { headers: { Authorization: `Bearer ${data.token}` } })
           .then((r) => r.ok ? r.json() : null)
           .then((d) => { if (d) setProfile({ name: d.name ?? "", homeCity: d.homeCity ?? "", budget: d.budget ?? "", interests: d.interests ?? [] }); })
@@ -164,6 +118,15 @@ function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function saveProfile() {
+    await fetch(`${API_BASE_URL}/api/profile`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(profile),
+    });
+    setStep("home");
   }
 
   return (
@@ -195,14 +158,15 @@ function App() {
       </div>
 
       <div className="relative z-10 mx-auto grid max-w-[1280px] items-stretch gap-4 pb-10 sm:gap-5 lg:grid-cols-2">
-        <section className="animate-floatIn rounded-3xl border border-white/15 bg-white/10 p-4 shadow-glass backdrop-blur-xl sm:p-5 md:p-5 lg:p-5 flex flex-col">
+        {/* Left panel */}
+        <section className="animate-floatIn flex flex-col rounded-3xl border border-white/15 bg-white/10 p-4 shadow-glass backdrop-blur-xl sm:p-5 lg:p-5">
           <p className="font-display text-xs uppercase tracking-[0.35em] text-cyan-200">
             Welcome to Travel Experience AI
           </p>
-          <h1 className="mt-3 max-w-3xl font-display text-2xl leading-tight text-white sm:text-3xl md:text-4xl lg:text-[2.5rem]">
+          <h1 className="mt-3 font-display text-2xl leading-tight text-white sm:text-3xl md:text-4xl lg:text-[2.5rem]">
             Plan smarter trips with AI, inspired by modern travel platforms.
           </h1>
-          <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-200/90">
+          <p className="mt-4 text-sm leading-6 text-slate-200/90">
             Discover destinations, build itineraries, and unlock seamless booking
             experiences after a secure OTP sign in.
           </p>
@@ -247,195 +211,53 @@ function App() {
           </div>
         </section>
 
+        {/* Right panel */}
         <section className="animate-floatIn flex flex-col justify-center rounded-3xl border border-white/15 bg-slate-950/45 p-7 shadow-glass backdrop-blur-xl [animation-delay:120ms] sm:p-8 md:p-10 lg:p-12 xl:p-16">
-          <div className="mb-6 flex items-center gap-2">
-            <div className={`h-2.5 w-10 rounded-full ${step === "email" ? "bg-cyan-300" : "bg-cyan-300/30"}`} />
-            <div className={`h-2.5 w-10 rounded-full ${step === "otp" ? "bg-cyan-300" : "bg-cyan-300/30"}`} />
-            <div className={`h-2.5 w-10 rounded-full ${step === "profile" || step === "home" ? "bg-cyan-300" : "bg-cyan-300/30"}`} />
-          </div>
+          {step !== "home" ? (
+            <div className="mb-6 flex items-center gap-2">
+              {["email", "otp", "profile"].map((s) => (
+                <div key={s} className={`h-2.5 w-10 rounded-full transition-all ${step === s ? "bg-cyan-300" : "bg-cyan-300/30"}`} />
+              ))}
+            </div>
+          ) : null}
 
           <div key={step} className="animate-floatIn">
-            {step === "email" ? (
-              <form onSubmit={requestOtp}>
-                <h2 className="font-display text-4xl text-white md:text-5xl lg:text-6xl">Sign in with Email</h2>
-                <p className="mt-3 text-base text-slate-300">Enter your email to receive a one-time password.</p>
-
-                <label className="mt-5 block">
-                  <span className="text-base font-semibold text-slate-200">Email address</span>
-                  <input
-                    type="email"
-                    value={identifier}
-                    onChange={(event) => setIdentifier(event.target.value)}
-                    placeholder="you@example.com"
-                    className="mt-2 h-14 w-full rounded-xl border border-white/20 bg-slate-900/80 px-4 text-base text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-cyan-300"
-                  />
-                </label>
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="mt-6 inline-flex h-14 w-full items-center justify-center rounded-xl bg-cyan-300 px-5 text-base font-semibold text-slate-900 transition hover:translate-y-[-1px] hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {loading ? "Sending..." : "Continue"}
-                </button>
-              </form>
-            ) : null}
-
-            {step === "otp" ? (
-              <form onSubmit={verifyOtp}>
-                <h2 className="font-display text-4xl text-white md:text-5xl lg:text-6xl">Verify OTP</h2>
-                <p className="mt-3 text-base text-slate-300">Enter the OTP sent to {destination || "your email"}.</p>
-
-                <label className="mt-5 block">
-                  <span className="text-base font-semibold text-slate-200">One-time password</span>
-                  <input
-                    inputMode="numeric"
-                    value={otp}
-                    onChange={(event) => setOtp(event.target.value)}
-                    placeholder="Enter the 6-digit OTP"
-                    className="mt-2 h-14 w-full rounded-xl border border-white/20 bg-slate-900/80 px-4 text-base text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-cyan-300"
-                  />
-                </label>
-
-                <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-                  <button
-                    type="button"
-                    onClick={() => setStep("email")}
-                    className="inline-flex h-14 flex-1 items-center justify-center rounded-xl border border-white/20 bg-slate-900/80 px-5 text-base font-semibold text-slate-100 transition hover:bg-slate-900"
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={loading || !canVerify}
-                    className="inline-flex h-14 flex-1 items-center justify-center rounded-xl bg-cyan-300 px-5 text-base font-semibold text-slate-900 transition hover:translate-y-[-1px] hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    {loading ? "Verifying..." : "Verify"}
-                  </button>
-                </div>
-
-                {demoOtp ? (
-                  <div className="mt-4 flex items-center gap-2">
-                    <p className="font-display text-lg tracking-widest text-cyan-200">
-                      Demo OTP: {demoOtp}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={copyDemoOtp}
-                      title="Copy OTP"
-                      className="flex items-center gap-1 rounded-lg border border-white/15 bg-slate-800/60 px-2 py-1 text-xs text-slate-300 transition hover:bg-slate-700 hover:text-cyan-200"
-                    >
-                      {copied ? (
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                        </svg>
-                      )}
-                      {copied ? "Copied" : "Copy"}
-                    </button>
-                  </div>
-                ) : null}
-                <p className="mt-3 break-all text-xs text-slate-300">Challenge ID: {challengeId}</p>
-              </form>
-            ) : null}
-
-            {step === "profile" ? (
-              <div>
-                <h2 className="font-display text-3xl text-white">Set up your profile</h2>
-                <p className="mt-2 text-sm text-slate-300">Help us personalise your AI travel experience.</p>
-
-                <label className="mt-5 block">
-                  <span className="text-sm font-semibold text-slate-200">Full name</span>
-                  <input
-                    type="text"
-                    value={profile.name}
-                    onChange={(e) => setProfile((p) => ({ ...p, name: e.target.value }))}
-                    placeholder="Your name"
-                    className="mt-2 h-12 w-full rounded-xl border border-white/20 bg-slate-900/80 px-4 text-sm text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-cyan-300"
-                  />
-                </label>
-
-                <label className="mt-4 block">
-                  <span className="text-sm font-semibold text-slate-200">Home city</span>
-                  <input
-                    type="text"
-                    value={profile.homeCity}
-                    onChange={(e) => setProfile((p) => ({ ...p, homeCity: e.target.value }))}
-                    placeholder="e.g. Mumbai"
-                    className="mt-2 h-12 w-full rounded-xl border border-white/20 bg-slate-900/80 px-4 text-sm text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-cyan-300"
-                  />
-                </label>
-
-                <div className="mt-4">
-                  <span className="text-sm font-semibold text-slate-200">Travel budget</span>
-                  <div className="mt-2 flex gap-2">
-                    {BUDGETS.map((b) => (
-                      <button
-                        key={b}
-                        type="button"
-                        onClick={() => setProfile((p) => ({ ...p, budget: b }))}
-                        className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${profile.budget === b ? "border-cyan-300 bg-cyan-300/15 text-cyan-200" : "border-white/15 bg-slate-900/60 text-slate-300 hover:border-white/30"}`}
-                      >
-                        {b}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <span className="text-sm font-semibold text-slate-200">Interests</span>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {INTERESTS.map((interest) => (
-                      <button
-                        key={interest}
-                        type="button"
-                        onClick={() => toggleInterest(interest)}
-                        className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${profile.interests.includes(interest) ? "border-cyan-300 bg-cyan-300/15 text-cyan-200" : "border-white/15 bg-slate-900/60 text-slate-300 hover:border-white/30"}`}
-                      >
-                        {interest}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-6 flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setStep("home")}
-                    className="inline-flex h-12 flex-1 items-center justify-center rounded-xl border border-white/20 bg-slate-900/80 px-5 text-sm font-semibold text-slate-300 transition hover:bg-slate-900"
-                  >
-                    Skip for now
-                  </button>
-                  <button
-                    type="button"
-                    onClick={saveProfile}
-                    disabled={!profile.name.trim()}
-                    className="inline-flex h-12 flex-1 items-center justify-center rounded-xl bg-cyan-300 px-5 text-sm font-semibold text-slate-900 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    Save &amp; Continue
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {step === "home" ? (
-              <div>
-                <h2 className="font-display text-2xl text-white">Welcome Aboard 🎉</h2>
-                <p className="mt-2 text-sm text-slate-300">You are signed in. Your AI travel workspace is ready.</p>
-                <div className="mt-5 rounded-xl border border-emerald-300/25 bg-emerald-300/10 p-4 text-sm text-emerald-100">
-                  {message}
-                </div>
-                {profile.name ? (
-                  <p className="mt-3 text-sm text-slate-300">
-                    Hi <span className="text-cyan-200 font-semibold">{profile.name}</span>! Your preferences have been saved.
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
+            {step === "email" && (
+              <AuthEmail
+                identifier={identifier}
+                setIdentifier={setIdentifier}
+                loading={loading}
+                onSubmit={requestOtp}
+              />
+            )}
+            {step === "otp" && (
+              <AuthOtp
+                otp={otp}
+                setOtp={setOtp}
+                destination={destination}
+                challengeId={challengeId}
+                demoOtp={demoOtp}
+                loading={loading}
+                canVerify={canVerify}
+                onSubmit={verifyOtp}
+                onBack={() => setStep("email")}
+              />
+            )}
+            {step === "profile" && (
+              <ProfileSetup
+                profile={profile}
+                setProfile={setProfile}
+                onSave={saveProfile}
+                onSkip={() => setStep("home")}
+              />
+            )}
+            {step === "home" && (
+              <Home
+                profile={profile}
+                identifier={identifier}
+                onEditProfile={() => setStep("profile")}
+              />
+            )}
           </div>
 
           {step !== "home" && step !== "profile" ? (
