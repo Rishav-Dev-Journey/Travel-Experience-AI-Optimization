@@ -1,3 +1,5 @@
+import ChatBot from "./ChatBot";
+
 const INTEREST_SUGGESTIONS = {
   Beach: { dest: "Goa", tag: "Beach getaway", desc: "Sun, sand & seafood on India's favourite coast", color: "text-cyan-200", bg: "bg-cyan-300/10 border-cyan-300/25", emoji: "🏖️" },
   Mountains: { dest: "Manali", tag: "Mountain escape", desc: "Snow peaks, river valleys & adventure trails", color: "text-blue-200", bg: "bg-blue-300/10 border-blue-300/25", emoji: "🏔️" },
@@ -151,6 +153,7 @@ export default function Home({ profile, identifier, onEditProfile, onLogout }) {
           </div>
         </div>
       </div>
+      <ChatBot profile={profile} />
     </div>
   );
 }

@@ -275,21 +275,21 @@ internal sealed class PostgresAuthStore
     }
 
     bool isNewUser;
+    await using (var checkCommand = connection.CreateCommand())
+    {
+      checkCommand.CommandText = "select last_login_at from auth_users where id = @user_id limit 1;";
+      checkCommand.Parameters.AddWithValue("user_id", userId.Value);
+      await using var checkReader = await checkCommand.ExecuteReaderAsync(cancellationToken);
+      await checkReader.ReadAsync(cancellationToken);
+      isNewUser = checkReader.IsDBNull(0);
+    }
+
     await using (var loginCommand = connection.CreateCommand())
     {
-      loginCommand.CommandText = """
-        update auth_users
-        set last_login_at = @last_login_at
-        where id = @user_id
-        returning (last_login_at = @last_login_at) as is_first_login;
-        """;
-
+      loginCommand.CommandText = "update auth_users set last_login_at = @last_login_at where id = @user_id;";
       loginCommand.Parameters.AddWithValue("last_login_at", now);
       loginCommand.Parameters.AddWithValue("user_id", userId.Value);
-
-      await using var loginReader = await loginCommand.ExecuteReaderAsync(cancellationToken);
-      await loginReader.ReadAsync(cancellationToken);
-      isNewUser = loginReader.GetBoolean(0);
+      await loginCommand.ExecuteNonQueryAsync(cancellationToken);
     }
 
     return new ChallengeVerificationOutcome.Success(userId.Value, identifier!, channel!, now.AddHours(8), isNewUser);
