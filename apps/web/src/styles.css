@@ -17,3 +17,177 @@
     @apply box-border;
   }
 }
+
+.scenic-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  opacity: 0.5;
+}
+
+.scenic-photo {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.3) 0%, rgba(2, 6, 23, 0.5) 60%, rgba(2, 6, 23, 0.72) 100%),
+    url("https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2000&q=80");
+  background-size: cover;
+  background-position: center;
+  transform-origin: center;
+  animation: scenicPan 28s ease-in-out infinite alternate;
+}
+
+.scenic-mosaic {
+  position: absolute;
+  inset: 0;
+}
+
+.scenic-mosaic-item {
+  position: absolute;
+  left: var(--tile-left);
+  top: var(--tile-top);
+  width: var(--tile-size);
+  height: calc(var(--tile-size) * 0.62);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.45);
+  opacity: 0.42;
+  transform: translate(-50%, -50%);
+  animation: mosaicFloat var(--tile-duration) ease-in-out infinite;
+  animation-delay: var(--tile-delay);
+}
+
+.scenic-train-photo,
+.scenic-plane-photo {
+  position: absolute;
+  width: 180px;
+  height: 74px;
+  border-radius: 16px;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 14px 38px rgba(2, 6, 23, 0.45);
+}
+
+.scenic-train-photo {
+  bottom: 16%;
+  background-image:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.2), rgba(2, 6, 23, 0.42)),
+    url("https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=900&q=80");
+  animation: moveTrainPhoto 20s linear infinite;
+}
+
+.scenic-plane-photo {
+  top: 12%;
+  background-image:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.15), rgba(2, 6, 23, 0.3)),
+    url("https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=900&q=80");
+  animation: flyPlanePhoto 22s ease-in-out infinite;
+}
+
+@keyframes scenicPan {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(-18px, -12px, 0) scale(1.06);
+  }
+}
+
+@keyframes moveTrainPhoto {
+  0% {
+    transform: translateX(-220px);
+  }
+  100% {
+    transform: translateX(calc(100vw + 240px));
+  }
+}
+
+@keyframes mosaicFloat {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) translateY(0) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) translateY(-14px) scale(1.03);
+  }
+}
+
+@keyframes flyPlanePhoto {
+  0% {
+    transform: translate3d(-220px, 0, 0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  50% {
+    transform: translate3d(calc(50vw - 80px), -28px, 0);
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(calc(100vw + 220px), -8px, 0);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .scenic-bg {
+    opacity: 0.42;
+  }
+
+  .scenic-mosaic-item {
+    opacity: 0.3;
+  }
+
+  .scenic-mosaic-item:nth-child(n + 19) {
+    display: none;
+  }
+
+  .scenic-train-photo,
+  .scenic-plane-photo {
+    width: 136px;
+    height: 58px;
+    border-radius: 12px;
+  }
+}
+
+.travel-gallery-track {
+  display: flex;
+  gap: 10px;
+  width: max-content;
+  animation: gallerySlide 26s linear infinite;
+}
+
+.travel-gallery-image {
+  width: 130px;
+  height: 86px;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+@keyframes gallerySlide {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-40%);
+  }
+}
+
+@media (max-width: 640px) {
+  .travel-gallery-track {
+    animation-duration: 20s;
+  }
+
+  .travel-gallery-image {
+    width: 112px;
+    height: 76px;
+  }
+}
