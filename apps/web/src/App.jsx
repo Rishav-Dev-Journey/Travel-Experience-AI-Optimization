@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AuthEmail from "./components/AuthEmail";
 import AuthOtp from "./components/AuthOtp";
 import ProfileSetup from "./components/ProfileSetup";
 import Home from "./components/Home";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5080";
+const IDLE_TIMEOUT_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
 const TRAVEL_BACKGROUND_IMAGES = [
   "https://source.unsplash.com/1200x900/?kerala,temple&sig=1",
@@ -41,17 +42,79 @@ const TRAVEL_BACKGROUND_IMAGES = [
   "https://source.unsplash.com/1200x900/?india,monsoon,landscape&sig=32",
 ];
 
+function loadFromStorage(key, fallback) {
+  try {
+    const val = localStorage.getItem(key);
+    return val !== null ? JSON.parse(val) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function clearSession() {
+  ["te_token", "te_step", "te_profile", "te_identifier", "te_last_active"].forEach((k) =>
+    localStorage.removeItem(k)
+  );
+}
+
+function isSessionExpired() {
+  const lastActive = loadFromStorage("te_last_active", null);
+  if (!lastActive) return true;
+  return Date.now() - lastActive > IDLE_TIMEOUT_MS;
+}
+
 function App() {
-  const [identifier, setIdentifier] = useState("");
+  const [identifier, setIdentifier] = useState(() => loadFromStorage("te_identifier", ""));
   const [otp, setOtp] = useState("");
   const [challengeId, setChallengeId] = useState("");
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(() => loadFromStorage("te_token", ""));
   const [destination, setDestination] = useState("");
-  const [step, setStep] = useState("email"); // email | otp | profile | home
+  const [step, setStep] = useState(() => {
+    const savedToken = loadFromStorage("te_token", "");
+    if (!savedToken || isSessionExpired()) { clearSession(); return "email"; }
+    return loadFromStorage("te_step", "home");
+  });
   const [message, setMessage] = useState("Request an OTP to start the login flow.");
   const [loading, setLoading] = useState(false);
   const [demoOtp, setDemoOtp] = useState("");
-  const [profile, setProfile] = useState({ name: "", homeCity: "", budget: "", interests: [] });
+  const [profile, setProfile] = useState(() => loadFromStorage("te_profile", { name: "", homeCity: "", budget: "", interests: [] }));
+
+  const idleTimer = useRef(null);
+
+  // Track activity — reset idle timer on any interaction
+  useEffect(() => {
+    if (!token) return;
+
+    function onActivity() {
+      localStorage.setItem("te_last_active", JSON.stringify(Date.now()));
+      clearTimeout(idleTimer.current);
+      idleTimer.current = setTimeout(logout, IDLE_TIMEOUT_MS);
+    }
+
+    const events = ["mousemove", "keydown", "pointerdown", "touchstart", "scroll"];
+    events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
+    onActivity(); // set initial timestamp
+
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, onActivity));
+      clearTimeout(idleTimer.current);
+    };
+  }, [token]);
+
+  function logout() {
+    clearSession();
+    setToken("");
+    setIdentifier("");
+    setProfile({ name: "", homeCity: "", budget: "", interests: [] });
+    setStep("email");
+    setMessage("Session expired. Please sign in again.");
+  }
+
+  function persist(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
+  function updateToken(t) { setToken(t); persist("te_token", t); }
+  function updateProfile(p) { setProfile(p); persist("te_profile", p); }
+  function updateStep(s) { setStep(s); persist("te_step", s); }
+  function updateIdentifier(v) { setIdentifier(v); persist("te_identifier", v); }
 
   const canVerify = useMemo(
     () => challengeId.length > 0 && otp.trim().length > 0,
@@ -62,7 +125,7 @@ function App() {
     event.preventDefault();
     setLoading(true);
     setMessage("Generating OTP...");
-    setToken("");
+    updateToken("");
     setDemoOtp("");
 
     try {
@@ -78,7 +141,7 @@ function App() {
       setDestination(data.destination || "your inbox");
       setDemoOtp(data.demoOtp || "");
       setOtp("");
-      setStep("otp");
+      updateStep("otp");
       setMessage(`OTP sent to ${data.destination}.`);
     } catch (error) {
       setMessage(error.message);
@@ -101,16 +164,17 @@ function App() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || "Unable to verify OTP.");
 
-      setToken(data.token);
+      updateToken(data.token);
+      updateIdentifier(data.user.identifier);
       setMessage(`Logged in as ${data.user.identifier} via ${data.user.channel}.`);
 
       if (data.isNewUser) {
-        setStep("profile");
+        updateStep("profile");
       } else {
-        setStep("home");
+        updateStep("home");
         fetch(`${API_BASE_URL}/api/profile`, { headers: { Authorization: `Bearer ${data.token}` } })
           .then((r) => r.ok ? r.json() : null)
-          .then((d) => { if (d) setProfile({ name: d.name ?? "", homeCity: d.homeCity ?? "", budget: d.budget ?? "", interests: d.interests ?? [] }); })
+          .then((d) => { if (d) updateProfile({ name: d.name ?? "", homeCity: d.homeCity ?? "", budget: d.budget ?? "", interests: d.interests ?? [] }); })
           .catch(() => {});
       }
     } catch (error) {
@@ -126,7 +190,8 @@ function App() {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify(profile),
     });
-    setStep("home");
+    updateProfile(profile);
+    updateStep("home");
   }
 
   return (
@@ -225,7 +290,7 @@ function App() {
             {step === "email" && (
               <AuthEmail
                 identifier={identifier}
-                setIdentifier={setIdentifier}
+                setIdentifier={updateIdentifier}
                 loading={loading}
                 onSubmit={requestOtp}
               />
@@ -240,22 +305,22 @@ function App() {
                 loading={loading}
                 canVerify={canVerify}
                 onSubmit={verifyOtp}
-                onBack={() => setStep("email")}
+                onBack={() => updateStep("email")}
               />
             )}
             {step === "profile" && (
               <ProfileSetup
                 profile={profile}
-                setProfile={setProfile}
+                setProfile={updateProfile}
                 onSave={saveProfile}
-                onSkip={() => setStep("home")}
+                onSkip={() => updateStep("home")}
               />
             )}
             {step === "home" && (
               <Home
                 profile={profile}
                 identifier={identifier}
-                onEditProfile={() => setStep("profile")}
+                onEditProfile={() => updateStep("profile")}
               />
             )}
           </div>
