@@ -91,9 +91,11 @@ internal sealed class OtpAuthService
     {
       ChallengeVerificationOutcome.Success success => new OtpVerificationResult.Success(new OtpVerificationSuccess(
         Token: Convert.ToBase64String(Guid.NewGuid().ToByteArray()),
+        UserId: success.UserId,
         Identifier: success.Identifier,
         Channel: success.Channel,
-        ExpiresAt: success.SessionExpiresAt)),
+        ExpiresAt: success.SessionExpiresAt,
+        IsNewUser: success.IsNewUser)),
       ChallengeVerificationOutcome.NotFound => new OtpVerificationResult.NotFound(),
       ChallengeVerificationOutcome.Expired => new OtpVerificationResult.Expired(),
       ChallengeVerificationOutcome.InvalidCode => new OtpVerificationResult.InvalidCode(),

@@ -9,6 +9,14 @@ internal sealed record AuthUserRow(
   DateTimeOffset CreatedAt,
   DateTimeOffset? LastLoginAt);
 
+internal sealed record UserProfileRow(
+  Guid UserId,
+  string? Name,
+  string? HomeCity,
+  string? Budget,
+  string[] Interests,
+  DateTimeOffset UpdatedAt);
+
 internal sealed record OtpChallengeRow(
   Guid Id,
   string ChallengeId,
@@ -22,7 +30,7 @@ internal sealed record OtpChallengeRow(
 
 internal abstract record ChallengeVerificationOutcome
 {
-  public sealed record Success(string Identifier, string Channel, DateTimeOffset SessionExpiresAt) : ChallengeVerificationOutcome;
+  public sealed record Success(Guid UserId, string Identifier, string Channel, DateTimeOffset SessionExpiresAt, bool IsNewUser) : ChallengeVerificationOutcome;
   public sealed record NotFound : ChallengeVerificationOutcome;
   public sealed record Expired : ChallengeVerificationOutcome;
   public sealed record InvalidCode : ChallengeVerificationOutcome;
@@ -66,6 +74,15 @@ internal sealed class PostgresAuthStore
 
       create index if not exists ix_otp_challenges_identifier_channel
         on otp_challenges(identifier, channel);
+
+      create table if not exists user_profiles (
+        user_id uuid primary key references auth_users(id) on delete cascade,
+        name text null,
+        home_city text null,
+        budget text null,
+        interests text[] not null default '{}',
+        updated_at timestamptz not null
+      );
       """;
 
     await createSchemaCommand.ExecuteNonQueryAsync(cancellationToken);
@@ -248,26 +265,112 @@ internal sealed class PostgresAuthStore
       return new ChallengeVerificationOutcome.NotFound();
     }
 
+    bool isNewUser;
     await using (var loginCommand = connection.CreateCommand())
     {
       loginCommand.CommandText = """
         update auth_users
         set last_login_at = @last_login_at
-        where id = @user_id;
+        where id = @user_id
+        returning (last_login_at = @last_login_at) as is_first_login;
         """;
 
       loginCommand.Parameters.AddWithValue("last_login_at", now);
       loginCommand.Parameters.AddWithValue("user_id", userId.Value);
 
-      await loginCommand.ExecuteNonQueryAsync(cancellationToken);
+      await using var loginReader = await loginCommand.ExecuteReaderAsync(cancellationToken);
+      await loginReader.ReadAsync(cancellationToken);
+      isNewUser = loginReader.GetBoolean(0);
     }
 
-    return new ChallengeVerificationOutcome.Success(identifier!, channel!, now.AddHours(8));
+    return new ChallengeVerificationOutcome.Success(userId.Value, identifier!, channel!, now.AddHours(8), isNewUser);
   }
 
   private static DateTimeOffset ReadUtcOffset(NpgsqlDataReader reader, int ordinal)
   {
     var value = DateTime.SpecifyKind(reader.GetDateTime(ordinal), DateTimeKind.Utc);
     return new DateTimeOffset(value);
+  }
+
+  public async Task<UserProfileRow?> GetProfileAsync(Guid userId, CancellationToken cancellationToken = default)
+  {
+    await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+    await using var command = connection.CreateCommand();
+    command.CommandText = """
+      select user_id, name, home_city, budget, interests, updated_at
+      from user_profiles
+      where user_id = @user_id
+      limit 1;
+      """;
+    command.Parameters.AddWithValue("user_id", userId);
+
+    await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+    if (!await reader.ReadAsync(cancellationToken)) return null;
+
+    return new UserProfileRow(
+      reader.GetGuid(0),
+      reader.IsDBNull(1) ? null : reader.GetString(1),
+      reader.IsDBNull(2) ? null : reader.GetString(2),
+      reader.IsDBNull(3) ? null : reader.GetString(3),
+      reader.GetFieldValue<string[]>(4),
+      ReadUtcOffset(reader, 5));
+  }
+
+  public async Task<UserProfileRow> UpsertProfileAsync(Guid userId, string? name, string? homeCity, string? budget, string[] interests, CancellationToken cancellationToken = default)
+  {
+    var now = DateTimeOffset.UtcNow;
+    await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+    await using var command = connection.CreateCommand();
+    command.CommandText = """
+      insert into user_profiles (user_id, name, home_city, budget, interests, updated_at)
+      values (@user_id, @name, @home_city, @budget, @interests, @updated_at)
+      on conflict (user_id) do update
+        set name = excluded.name,
+            home_city = excluded.home_city,
+            budget = excluded.budget,
+            interests = excluded.interests,
+            updated_at = excluded.updated_at
+      returning user_id, name, home_city, budget, interests, updated_at;
+      """;
+    command.Parameters.AddWithValue("user_id", userId);
+    command.Parameters.AddWithValue("name", (object?)name ?? DBNull.Value);
+    command.Parameters.AddWithValue("home_city", (object?)homeCity ?? DBNull.Value);
+    command.Parameters.AddWithValue("budget", (object?)budget ?? DBNull.Value);
+    command.Parameters.AddWithValue("interests", interests);
+    command.Parameters.AddWithValue("updated_at", now);
+
+    await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+    await reader.ReadAsync(cancellationToken);
+
+    return new UserProfileRow(
+      reader.GetGuid(0),
+      reader.IsDBNull(1) ? null : reader.GetString(1),
+      reader.IsDBNull(2) ? null : reader.GetString(2),
+      reader.IsDBNull(3) ? null : reader.GetString(3),
+      reader.GetFieldValue<string[]>(4),
+      ReadUtcOffset(reader, 5));
+  }
+
+  public async Task<AuthUserRow?> GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default)
+  {
+    await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+    await using var command = connection.CreateCommand();
+    command.CommandText = """
+      select id, identifier, channel, created_at, last_login_at
+      from auth_users
+      where id = @id
+      limit 1;
+      """;
+    command.Parameters.AddWithValue("id", userId);
+
+    await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+    if (!await reader.ReadAsync(cancellationToken)) return null;
+
+    return new AuthUserRow(
+      reader.GetGuid(0),
+      reader.GetString(1),
+      reader.GetString(2),
+      ReadUtcOffset(reader, 3),
+      reader.IsDBNull(4) ? null : ReadUtcOffset(reader, 4));
   }
 }

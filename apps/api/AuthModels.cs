@@ -48,9 +48,11 @@ internal sealed record OtpChallenge(
 
 internal sealed record OtpVerificationSuccess(
   string Token,
+  Guid UserId,
   string Identifier,
   string Channel,
-  DateTimeOffset ExpiresAt);
+  DateTimeOffset ExpiresAt,
+  bool IsNewUser);
 
 internal abstract record OtpVerificationResult
 {

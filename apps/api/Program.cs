@@ -11,6 +11,7 @@ builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
 builder.Services.AddSingleton<PostgresAuthStore>();
 builder.Services.AddSingleton<OtpAuthService>();
 builder.Services.AddSingleton<IEmailOtpSender, AzureEmailOtpSender>();
+builder.Services.AddSingleton<TokenStore>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -95,22 +96,24 @@ app.MapPost("/api/auth/request-otp", async (RequestOtpRequest request, OtpAuthSe
   });
 });
 
-app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest request, OtpAuthService authService, CancellationToken cancellationToken) =>
+app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest request, OtpAuthService authService, TokenStore tokenStore, CancellationToken cancellationToken) =>
 {
   var result = await authService.VerifyChallengeAsync(request.ChallengeId.Trim(), request.Otp.Trim(), cancellationToken);
 
-  return result switch
+  if (result is OtpVerificationResult.Success success)
   {
-    OtpVerificationResult.Success success => Results.Ok(new
+    tokenStore.Store(success.Token, success.Value);
+    return Results.Ok(new
     {
       token = success.Token,
-      user = new
-      {
-        identifier = success.Identifier,
-        channel = success.Channel
-      },
+      user = new { identifier = success.Identifier, channel = success.Channel },
+      isNewUser = success.Value.IsNewUser,
       expiresAt = success.ExpiresAt
-    }),
+    });
+  }
+
+  return result switch
+  {
     OtpVerificationResult.NotFound => Results.NotFound(new { message = "OTP challenge not found or already used." }),
     OtpVerificationResult.Expired => Results.BadRequest(new { message = "OTP expired. Request a new one." }),
     OtpVerificationResult.InvalidCode => Results.BadRequest(new { message = "Invalid OTP." }),
@@ -118,11 +121,7 @@ app.MapPost("/api/auth/verify-otp", async (VerifyOtpRequest request, OtpAuthServ
   };
 });
 
-app.MapGet("/api/health", () => Results.Ok(new
-{
-  ok = true,
-  service = "api"
-}));
+app.MapGet("/api/health", () => Results.Ok(new { ok = true, service = "api" }));
 
 app.MapGet("/api/info", () => Results.Ok(new
 {
@@ -131,8 +130,47 @@ app.MapGet("/api/info", () => Results.Ok(new
   version = "1.0.0"
 }));
 
+app.MapGet("/api/profile", async (HttpRequest request, TokenStore tokenStore, PostgresAuthStore authStore, CancellationToken cancellationToken) =>
+{
+  var userId = tokenStore.Resolve(request);
+  if (userId is null) return Results.Unauthorized();
+
+  var profile = await authStore.GetProfileAsync(userId.Value, cancellationToken);
+  if (profile is null) return Results.Ok(new { name = (string?)null, homeCity = (string?)null, budget = (string?)null, interests = Array.Empty<string>() });
+
+  return Results.Ok(new
+  {
+    name = profile.Name,
+    homeCity = profile.HomeCity,
+    budget = profile.Budget,
+    interests = profile.Interests
+  });
+});
+
+app.MapPut("/api/profile", async (UpsertProfileRequest request, HttpRequest httpRequest, TokenStore tokenStore, PostgresAuthStore authStore, CancellationToken cancellationToken) =>
+{
+  var userId = tokenStore.Resolve(httpRequest);
+  if (userId is null) return Results.Unauthorized();
+
+  var profile = await authStore.UpsertProfileAsync(
+    userId.Value,
+    request.Name?.Trim(),
+    request.HomeCity?.Trim(),
+    request.Budget?.Trim(),
+    request.Interests ?? [],
+    cancellationToken);
+
+  return Results.Ok(new
+  {
+    name = profile.Name,
+    homeCity = profile.HomeCity,
+    budget = profile.Budget,
+    interests = profile.Interests
+  });
+});
+
 app.Run();
 
 internal sealed record RequestOtpRequest(string Identifier, string Channel);
-
 internal sealed record VerifyOtpRequest(string ChallengeId, string Otp);
+internal sealed record UpsertProfileRequest(string? Name, string? HomeCity, string? Budget, string[]? Interests);
