@@ -1,5 +1,6 @@
 import ChatBot from "./ChatBot";
 import TripPlanner from "./TripPlanner";
+import DestinationDetail from "./DestinationDetail";
 import { useState, useEffect } from "react";
 
 const INTEREST_SUGGESTIONS = {
@@ -32,30 +33,45 @@ export default function Home({ profile, identifier, onEditProfile, onLogout, onF
   const [recommendations, setRecommendations] = useState([]);
   const [searching, setSearching] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState([]);
+  const [recommendationEngine, setRecommendationEngine] = useState(null);
+  const [selectedDestination, setSelectedDestination] = useState(null);
 
   // Load AI suggestions based on profile on mount
   useEffect(() => {
+    console.log('🌟 Profile interests:', profile.interests);
     if (!profile.interests?.length) return;
     const budgetMap = { Budget: [5000, 30000], "Mid-range": [10000, 60000], Luxury: [30000, 150000] };
     const [bMin, bMax] = budgetMap[profile.budget] ?? [5000, 150000];
+    console.log('💰 Fetching AI suggestions with budget:', bMin, '-', bMax);
     onFetchRecommendations({
       sourceCity: profile.homeCity || "Delhi",
       budgetMin: bMin,
       budgetMax: bMax,
       startDate: new Date().toISOString().split("T")[0],
       days: 5,
+      numberOfPeople: "1",
       interests: profile.interests,
       transport: ["air", "train", "road", "bus"],
-    }).then((results) => setAiSuggestions(results));
+    }).then((response) => {
+      console.log('✨ AI Suggestions response:', response);
+      console.log('✨ AI Suggestions results:', response.results);
+      setAiSuggestions(response.results || []);
+    });
   }, [profile.interests?.join(","), profile.budget]);
 
   async function handleSearch(form) {
+    console.log('🔍 handleSearch called with:', form);
     setTripForm(form);
     setPlannerOpen(false);
     setSearching(true);
     setRecommendations([]);
+    setRecommendationEngine(null);
     const results = await onFetchRecommendations(form);
-    setRecommendations(results);
+    console.log('📊 API Response:', results);
+    console.log('📊 Results array:', results.results);
+    console.log('📊 Engine:', results.engine);
+    setRecommendations(results.results || results);
+    setRecommendationEngine(results.engine || null);
     setSearching(false);
   }
 
@@ -175,29 +191,49 @@ export default function Home({ profile, identifier, onEditProfile, onLogout, onF
         {searching ? (
           <div className="mt-6 flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-900/40 p-5">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-300 border-t-transparent" />
-            <p className="text-sm text-slate-400">Finding best destinations for you...</p>
+            <p className="text-sm text-slate-400">🤖 AI is analyzing destinations for you...</p>
           </div>
         ) : recommendations.length > 0 ? (
           <div className="mt-6">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-widest text-cyan-300">🤖 AI Recommendations — {tripForm?.sourceCity} · {tripForm?.days} days</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-semibold uppercase tracking-widest text-cyan-300">
+                  {recommendationEngine === 'ai' ? '🤖 AI-Powered' : '📊 Smart'} Recommendations — {tripForm?.sourceCity} · {tripForm?.days} days · {tripForm?.numberOfPeople} {tripForm?.numberOfPeople === "1" ? "person" : "people"}
+                </p>
+                {recommendationEngine === 'ai' && (
+                  <span className="rounded-full bg-cyan-300/20 px-2 py-0.5 text-[10px] font-semibold text-cyan-300">AWS Bedrock</span>
+                )}
+              </div>
               <button type="button" onClick={() => setPlannerOpen(true)} className="text-[10px] text-slate-400 hover:text-white">Modify →</button>
             </div>
             <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {recommendations.map((r, i) => (
-                <div key={r.id} className="relative rounded-2xl border border-white/10 bg-slate-900/60 overflow-hidden">
+                <div 
+                  key={r.id} 
+                  className="relative rounded-2xl border border-white/10 bg-slate-900/60 overflow-hidden hover:border-cyan-300/30 transition cursor-pointer"
+                  onClick={() => setSelectedDestination(r)}
+                >
                   <img src={r.imageUrl} alt={r.name} className="h-36 w-full object-cover" />
                   <div className="absolute top-2 left-2 rounded-full bg-cyan-300 px-2 py-0.5 text-[10px] font-bold text-slate-900">#{i + 1} Match</div>
+                  {recommendationEngine === 'ai' && (
+                    <div className="absolute top-2 right-2 rounded-full bg-purple-500/90 px-2 py-0.5 text-[10px] font-bold text-white">AI Pick</div>
+                  )}
                   <div className="p-4">
                     <p className="font-display text-base font-semibold text-white">{r.name}</p>
                     <p className="mt-1 text-xs text-slate-400 line-clamp-2">{r.description}</p>
+                    {recommendationEngine === 'ai' && r.scoreBreakdown && (
+                      <p className="mt-2 text-[10px] text-cyan-300 italic">💡 {r.scoreBreakdown}</p>
+                    )}
                     <div className="mt-3 flex flex-wrap gap-1">
                       {r.interests.map((tag) => (
                         <span key={tag} className="rounded-lg bg-white/10 px-2 py-0.5 text-[10px] text-slate-300">{tag}</span>
                       ))}
                     </div>
-                    <div className="mt-3 flex items-center justify-between text-[10px] text-slate-500">
-                      <span>🗓 {r.idealDaysMin}–{r.idealDaysMax} days</span>
+                    <div className="mt-3 flex items-center justify-between text-[10px]">
+                      <span className="text-slate-500">🗓 {r.idealDaysMin}–{r.idealDaysMax} days</span>
+                      <span className="text-emerald-400 font-semibold">₹{r.pricePerPerson?.toLocaleString()}/person</span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
                       <span>🚀 {r.availableTransport.join(", ")}</span>
                       <span className="text-cyan-400 font-semibold">Score {r.score}/100</span>
                     </div>
@@ -232,7 +268,11 @@ export default function Home({ profile, identifier, onEditProfile, onLogout, onF
           {aiSuggestions.length > 0 ? (
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {aiSuggestions.map((r) => (
-                <div key={r.id} className="rounded-2xl border border-white/10 bg-slate-900/60 overflow-hidden">
+                <div 
+                  key={r.id} 
+                  className="rounded-2xl border border-white/10 bg-slate-900/60 overflow-hidden cursor-pointer hover:border-cyan-300/30 transition"
+                  onClick={() => setSelectedDestination(r)}
+                >
                   <img src={r.imageUrl} alt={r.name} className="h-32 w-full object-cover" />
                   <div className="p-3">
                     <div className="flex items-center justify-between">
@@ -245,7 +285,10 @@ export default function Home({ profile, identifier, onEditProfile, onLogout, onF
                         <span key={tag} className="rounded-lg bg-white/10 px-2 py-0.5 text-[10px] text-slate-300">{tag}</span>
                       ))}
                     </div>
-                    <p className="mt-2 text-[10px] text-slate-500">🗓 {r.idealDaysMin}–{r.idealDaysMax} days ideal</p>
+                    <div className="mt-2 flex items-center justify-between text-[10px]">
+                      <span className="text-slate-500">🗓 {r.idealDaysMin}–{r.idealDaysMax} days</span>
+                      <span className="text-emerald-400 font-semibold">₹{r.pricePerPerson?.toLocaleString()}/person</span>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -278,6 +321,13 @@ export default function Home({ profile, identifier, onEditProfile, onLogout, onF
           profile={profile}
           onSearch={handleSearch}
           onClose={() => setPlannerOpen(false)}
+        />
+      ) : null}
+      {selectedDestination ? (
+        <DestinationDetail
+          destination={selectedDestination}
+          numberOfPeople={parseInt(tripForm?.numberOfPeople || "1")}
+          onClose={() => setSelectedDestination(null)}
         />
       ) : null}
     </div>

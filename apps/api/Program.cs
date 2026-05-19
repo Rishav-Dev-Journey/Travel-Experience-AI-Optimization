@@ -1,3 +1,4 @@
+using Amazon.BedrockRuntime;
 using Npgsql;
 using TravelExperience.Api;
 
@@ -12,6 +13,12 @@ builder.Services.AddSingleton<PostgresAuthStore>();
 builder.Services.AddSingleton<OtpAuthService>();
 builder.Services.AddSingleton<IEmailOtpSender, AzureEmailOtpSender>();
 builder.Services.AddSingleton<RecommendationEngine>();
+
+var awsRegion = builder.Configuration["AWS:Region"] ?? "us-east-1";
+builder.Services.AddSingleton(new AmazonBedrockRuntimeClient(Amazon.RegionEndpoint.GetBySystemName(awsRegion)));
+var bedrockModelId = builder.Configuration["AWS:Bedrock:ModelId"] ?? "anthropic.claude-3-haiku-20240307-v1:0";
+builder.Services.AddSingleton(sp => new BedrockRecommendationService(sp.GetRequiredService<AmazonBedrockRuntimeClient>(), bedrockModelId));
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -161,7 +168,7 @@ app.MapPut("/api/profile", async (UpsertProfileRequest request, HttpRequest http
   return Results.Ok(new { name = profile.Name, homeCity = profile.HomeCity, budget = profile.Budget, interests = profile.Interests });
 });
 
-app.MapPost("/api/recommendations", async (RecommendationRequest request, HttpRequest httpRequest, PostgresAuthStore authStore, RecommendationEngine engine, CancellationToken cancellationToken) =>
+app.MapPost("/api/recommendations", async (RecommendationRequest request, HttpRequest httpRequest, PostgresAuthStore authStore, BedrockRecommendationService bedrockService, RecommendationEngine fallbackEngine, ILogger<Program> logger, CancellationToken cancellationToken) =>
 {
   var token = httpRequest.Headers.Authorization.FirstOrDefault()?.Replace("Bearer ", "").Trim();
   if (string.IsNullOrEmpty(token)) return Results.Unauthorized();
@@ -177,9 +184,32 @@ app.MapPost("/api/recommendations", async (RecommendationRequest request, HttpRe
 
   var travelMonth = DateOnly.TryParse(request.StartDate, out var date) ? date.Month : DateTime.UtcNow.Month;
   var destinations = await authStore.GetAllDestinationsAsync(cancellationToken);
-  var results = engine.Score(destinations, request, travelMonth);
+  
+  List<RecommendationResult> results;
+  string engine = "ai";
+  try
+  {
+    logger.LogInformation("Attempting AI recommendations with Bedrock...");
+    results = await bedrockService.GetAIRecommendationsAsync(destinations, request, travelMonth, cancellationToken);
+    if (results.Count == 0)
+    {
+      logger.LogWarning("Bedrock returned 0 results, falling back to rule-based");
+      results = fallbackEngine.Score(destinations, request, travelMonth);
+      engine = "rule-based";
+    }
+    else
+    {
+      logger.LogInformation("Successfully got {Count} AI recommendations", results.Count);
+    }
+  }
+  catch (Exception ex)
+  {
+    logger.LogError(ex, "Bedrock failed, using rule-based fallback");
+    results = fallbackEngine.Score(destinations, request, travelMonth);
+    engine = "rule-based";
+  }
 
-  return Results.Ok(new { results, total = results.Count });
+  return Results.Ok(new { results, total = results.Count, engine });
 });
 
 app.Run();
@@ -193,5 +223,6 @@ internal sealed record RecommendationRequest(
   int BudgetMax,
   string StartDate,
   int Days,
+  int NumberOfPeople,
   string[] Interests,
   string[] TransportModes);

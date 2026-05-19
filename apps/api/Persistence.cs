@@ -437,7 +437,8 @@ internal sealed class PostgresAuthStore
     command.CommandText = """
       select id, name, country, description, image_url, interests,
              budget_min, budget_max, ideal_days_min, ideal_days_max,
-             best_months, transport_modes, highlights
+             best_months, transport_modes, highlights, price_per_person,
+             latitude, longitude
       from destinations;
       """;
     await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -457,7 +458,10 @@ internal sealed class PostgresAuthStore
         reader.GetInt32(9),
         reader.GetFieldValue<int[]>(10),
         reader.GetFieldValue<string[]>(11),
-        reader.GetFieldValue<string[]>(12)));
+        reader.GetFieldValue<string[]>(12),
+        reader.GetInt32(13),
+        reader.IsDBNull(14) ? null : (double?)reader.GetDecimal(14),
+        reader.IsDBNull(15) ? null : (double?)reader.GetDecimal(15)));
     }
     return rows;
   }

@@ -28,6 +28,7 @@ export default function TripPlanner({ profile, onSearch, onClose }) {
     budgetMax: "",
     startDate: "",
     days: "",
+    numberOfPeople: "1",
     interests: profile.interests || [],
     transport: [],
   });
@@ -51,6 +52,7 @@ export default function TripPlanner({ profile, onSearch, onClose }) {
     form.budgetMax &&
     form.startDate &&
     form.days &&
+    form.numberOfPeople &&
     form.interests.length > 0 &&
     form.transport.length > 0;
 
@@ -132,6 +134,20 @@ export default function TripPlanner({ profile, onSearch, onClose }) {
                 className="mt-2 h-10 w-full rounded-xl border border-white/15 bg-slate-800/60 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-300"
               />
             </div>
+          </div>
+
+          {/* Number of people */}
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-widest text-slate-400">Number of People</label>
+            <input
+              type="number"
+              value={form.numberOfPeople}
+              min="1"
+              max="20"
+              onChange={(e) => set("numberOfPeople", e.target.value)}
+              placeholder="e.g. 2"
+              className="mt-2 h-10 w-full rounded-xl border border-white/15 bg-slate-800/60 px-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-300"
+            />
           </div>
 
           {/* Transport modes */}

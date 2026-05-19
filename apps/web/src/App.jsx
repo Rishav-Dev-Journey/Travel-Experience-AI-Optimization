@@ -220,6 +220,7 @@ function App() {
   }
 
   async function fetchRecommendations(form) {
+    console.log('📡 Fetching recommendations for:', form);
     const res = await fetch(`${API_BASE_URL}/api/recommendations`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -229,14 +230,20 @@ function App() {
         budgetMax: parseInt(form.budgetMax),
         startDate: form.startDate,
         days: parseInt(form.days),
+        numberOfPeople: parseInt(form.numberOfPeople || "1"),
         interests: form.interests,
         transportModes: form.transport,
       }),
     });
-    if (res.status === 401) { logout(); return []; }
-    if (!res.ok) return [];
+    console.log('📡 Response status:', res.status);
+    if (res.status === 401) { logout(); return { results: [], engine: null }; }
+    if (!res.ok) {
+      console.error('❌ API error:', res.status, res.statusText);
+      return { results: [], engine: null };
+    }
     const data = await res.json();
-    return data.results ?? [];
+    console.log('✅ API data received:', data);
+    return { results: data.results ?? [], engine: data.engine ?? null, total: data.total ?? 0 };
   }
 
   return (
