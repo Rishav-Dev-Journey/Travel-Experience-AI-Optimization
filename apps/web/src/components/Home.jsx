@@ -3,6 +3,8 @@ import TripPlanner from "./TripPlanner";
 import DestinationDetail from "./DestinationDetail";
 import AIItinerary from "./AIItinerary";
 import ItineraryDisplay from "./ItineraryDisplay";
+import FlightFinder from "./FlightFinder";
+import HotelFinder from "./HotelFinder";
 import { useState, useEffect } from "react";
 
 const INTEREST_SUGGESTIONS = {
@@ -40,6 +42,8 @@ export default function Home({ profile, identifier, onEditProfile, onLogout, onF
   const [itineraryModalOpen, setItineraryModalOpen] = useState(false);
   const [generatedItinerary, setGeneratedItinerary] = useState(null);
   const [recentItineraries, setRecentItineraries] = useState([]);
+  const [flightFinderOpen, setFlightFinderOpen] = useState(false);
+  const [hotelFinderOpen, setHotelFinderOpen] = useState(false);
 
   // Load AI suggestions based on profile on mount
   useEffect(() => {
@@ -208,13 +212,22 @@ export default function Home({ profile, identifier, onEditProfile, onLogout, onF
               <span className="text-xs font-semibold text-purple-200">AI Itinerary</span>
               <span className="rounded-full bg-purple-300/20 px-2 py-0.5 text-[10px] text-purple-300">AI Powered</span>
             </button>
-            {QUICK_ACTIONS.slice(1, 3).map(({ label, icon }) => (
-              <div key={label} className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/50 p-4 opacity-50">
-                <span className="text-2xl">{icon}</span>
-                <span className="text-xs font-semibold text-slate-300">{label}</span>
-                <span className="rounded-full bg-slate-700/60 px-2 py-0.5 text-[10px] text-slate-400">Coming soon</span>
-              </div>
-            ))}
+            <button
+              type="button"
+              onClick={() => setFlightFinderOpen(true)}
+              className="flex flex-col items-center gap-2 rounded-2xl border border-blue-300/30 bg-blue-300/10 p-4 transition hover:bg-blue-300/20"
+            >
+              <span className="text-2xl">✈️</span>
+              <span className="text-xs font-semibold text-blue-200">Find Flights</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setHotelFinderOpen(true)}
+              className="flex flex-col items-center gap-2 rounded-2xl border border-emerald-300/30 bg-emerald-300/10 p-4 transition hover:bg-emerald-300/20"
+            >
+              <span className="text-2xl">🏨</span>
+              <span className="text-xs font-semibold text-emerald-200">Book a Stay</span>
+            </button>
           </div>
         </div>
 
@@ -398,6 +411,12 @@ export default function Home({ profile, identifier, onEditProfile, onLogout, onF
           itinerary={generatedItinerary}
           onClose={() => setGeneratedItinerary(null)}
         />
+      ) : null}
+      {flightFinderOpen ? (
+        <FlightFinder onClose={() => setFlightFinderOpen(false)} />
+      ) : null}
+      {hotelFinderOpen ? (
+        <HotelFinder onClose={() => setHotelFinderOpen(false)} />
       ) : null}
     </div>
   );
