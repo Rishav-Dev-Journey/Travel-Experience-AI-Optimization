@@ -19,6 +19,7 @@ builder.Services.AddSingleton(new AmazonBedrockRuntimeClient(Amazon.RegionEndpoi
 var bedrockModelId = builder.Configuration["AWS:Bedrock:ModelId"] ?? "anthropic.claude-3-haiku-20240307-v1:0";
 builder.Services.AddSingleton(sp => new BedrockRecommendationService(sp.GetRequiredService<AmazonBedrockRuntimeClient>(), bedrockModelId));
 builder.Services.AddSingleton(sp => new AIItineraryService(sp.GetRequiredService<AmazonBedrockRuntimeClient>(), bedrockModelId));
+builder.Services.AddSingleton(sp => new FlightAndHotelSearchService(sp.GetRequiredService<AmazonBedrockRuntimeClient>(), bedrockModelId));
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -256,6 +257,38 @@ app.MapGet("/api/itinerary/recent", async (HttpRequest httpRequest, PostgresAuth
 
   var itineraries = await authStore.GetRecentItinerariesAsync(userId.Value, cancellationToken);
   return Results.Ok(new { itineraries });
+});
+
+app.MapPost("/api/flights/search", async (FlightSearchRequest request, HttpRequest httpRequest, PostgresAuthStore authStore, FlightAndHotelSearchService searchService, ILogger<Program> logger, CancellationToken cancellationToken) =>
+{
+  var token = httpRequest.Headers.Authorization.FirstOrDefault()?.Replace("Bearer ", "").Trim();
+  if (string.IsNullOrEmpty(token)) return Results.Unauthorized();
+  var userId = await authStore.ResolveSessionAsync(token, cancellationToken);
+  if (userId is null) return Results.Unauthorized();
+
+  if (string.IsNullOrWhiteSpace(request.From) || string.IsNullOrWhiteSpace(request.To) || string.IsNullOrWhiteSpace(request.Date))
+      return Results.BadRequest(new { message = "From, To, and Date are required." });
+
+  logger.LogInformation("Searching flights from {From} to {To} on {Date}", request.From, request.To, request.Date);
+  var jsonResponse = await searchService.SearchFlightsAsync(request, logger, cancellationToken);
+  
+  return Results.Content(jsonResponse, "application/json");
+});
+
+app.MapPost("/api/hotels/search", async (HotelSearchRequest request, HttpRequest httpRequest, PostgresAuthStore authStore, FlightAndHotelSearchService searchService, ILogger<Program> logger, CancellationToken cancellationToken) =>
+{
+  var token = httpRequest.Headers.Authorization.FirstOrDefault()?.Replace("Bearer ", "").Trim();
+  if (string.IsNullOrEmpty(token)) return Results.Unauthorized();
+  var userId = await authStore.ResolveSessionAsync(token, cancellationToken);
+  if (userId is null) return Results.Unauthorized();
+
+  if (string.IsNullOrWhiteSpace(request.City) || string.IsNullOrWhiteSpace(request.CheckIn) || string.IsNullOrWhiteSpace(request.CheckOut))
+      return Results.BadRequest(new { message = "City, CheckIn, and CheckOut are required." });
+
+  logger.LogInformation("Searching hotels in {City} from {CheckIn} to {CheckOut}", request.City, request.CheckIn, request.CheckOut);
+  var jsonResponse = await searchService.SearchHotelsAsync(request, logger, cancellationToken);
+  
+  return Results.Content(jsonResponse, "application/json");
 });
 
 app.Run();

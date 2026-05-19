@@ -1,15 +1,6 @@
 import { useState, useMemo } from "react";
 
-const MOCK_FLIGHTS = [
-  { id: 1, airline: "Indigo", flightNo: "6E-101", dep: "08:00 AM", arr: "10:30 AM", duration: "2h 30m", durationMins: 150, price: 5400, type: "Non-stop" },
-  { id: 2, airline: "Vistara", flightNo: "UK-902", dep: "11:15 AM", arr: "01:50 PM", duration: "2h 35m", durationMins: 155, price: 6800, type: "Non-stop" },
-  { id: 3, airline: "Air India", flightNo: "AI-404", dep: "04:45 PM", arr: "07:20 PM", duration: "2h 35m", durationMins: 155, price: 6100, type: "Non-stop" },
-  { id: 4, airline: "SpiceJet", flightNo: "SG-211", dep: "08:30 PM", arr: "11:00 PM", duration: "2h 30m", durationMins: 150, price: 4900, type: "Non-stop" },
-  { id: 5, airline: "Akasa Air", flightNo: "QP-132", dep: "06:10 AM", arr: "08:20 AM", duration: "2h 10m", durationMins: 130, price: 5200, type: "Non-stop" },
-  { id: 6, airline: "Air India Express", flightNo: "IX-505", dep: "01:00 PM", arr: "05:00 PM", duration: "4h 00m", durationMins: 240, price: 4100, type: "1 Stop" },
-  { id: 7, airline: "Indigo", flightNo: "6E-882", dep: "09:45 PM", arr: "11:55 PM", duration: "2h 10m", durationMins: 130, price: 4800, type: "Non-stop" },
-  { id: 8, airline: "Vistara", flightNo: "UK-820", dep: "07:00 AM", arr: "09:30 AM", duration: "2h 30m", durationMins: 150, price: 7200, type: "Non-stop" },
-];
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5080";
 
 export default function FlightFinder({ onClose }) {
   const [form, setForm] = useState({
@@ -29,13 +20,44 @@ export default function FlightFinder({ onClose }) {
 
   const isValid = form.from.trim() && form.to.trim() && form.date;
 
-  function handleSearch() {
+  async function handleSearch() {
     setSearching(true);
     setResults(null);
-    setTimeout(() => {
+    try {
+      let token = "";
+      try {
+        const val = localStorage.getItem("te_token");
+        if (val) token = JSON.parse(val);
+      } catch (e) {
+        token = localStorage.getItem("te_token") || "";
+      }
+      const res = await fetch(`${API_BASE}/api/flights/search`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          from: form.from,
+          to: form.to,
+          date: form.date,
+          passengers: parseInt(form.passengers),
+          class: form.class
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setResults(data || []);
+      } else {
+        console.error("Failed to fetch flights");
+        setResults([]);
+      }
+    } catch (err) {
+      console.error(err);
+      setResults([]);
+    } finally {
       setSearching(false);
-      setResults(MOCK_FLIGHTS);
-    }, 1500);
+    }
   }
 
   const sortedResults = useMemo(() => {
@@ -53,21 +75,21 @@ export default function FlightFinder({ onClose }) {
   }, [results, sortType]);
 
   const cheapestFlightId = useMemo(() => {
-    if (!results) return null;
+    if (!results || results.length === 0) return null;
     return [...results].sort((a, b) => a.price - b.price)[0].id;
   }, [results]);
 
   const fastestFlightId = useMemo(() => {
-    if (!results) return null;
+    if (!results || results.length === 0) return null;
     return [...results].sort((a, b) => a.durationMins - b.durationMins)[0].id;
   }, [results]);
 
   const bestFlightId = useMemo(() => {
-    if (!results) return null;
+    if (!results || results.length === 0) return null;
     return [...results].sort((a, b) => (a.price * 0.6 + a.durationMins * 10) - (b.price * 0.6 + b.durationMins * 10))[0].id;
   }, [results]);
 
-  const lowestPrice = results ? Math.min(...results.map(r => r.price)) : 0;
+  const lowestPrice = results && results.length > 0 ? Math.min(...results.map(r => r.price)) : 0;
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center px-4">
@@ -142,13 +164,18 @@ export default function FlightFinder({ onClose }) {
               <button type="button" onClick={() => setResults(null)} className="text-[10px] text-cyan-300 hover:underline">New Search →</button>
             </div>
             
-            <div className="space-y-3 overflow-y-auto pr-1 flex-1 pb-4">
-              {sortedResults.map((flight) => {
-                const isCheapest = flight.id === cheapestFlightId;
-                const isFastest = flight.id === fastestFlightId;
-                const isBest = flight.id === bestFlightId;
+            {results.length === 0 ? (
+              <div className="text-center p-6 text-sm text-slate-400">
+                <p>No flights found for this route. The AI mock engine might have returned an empty result or an error occurred.</p>
+              </div>
+            ) : (
+              <div className="space-y-3 overflow-y-auto pr-1 flex-1 pb-4">
+                {sortedResults.map((flight) => {
+                  const isCheapest = flight.id === cheapestFlightId;
+                  const isFastest = flight.id === fastestFlightId;
+                  const isBest = flight.id === bestFlightId;
 
-                return (
+                  return (
                   <div key={flight.id} className="relative rounded-2xl border border-white/10 bg-slate-800/40 p-4 hover:bg-slate-800/60 hover:border-cyan-300/30 transition cursor-pointer">
                     
                     <div className="flex gap-2 absolute -top-2.5 left-4">
@@ -187,15 +214,22 @@ export default function FlightFinder({ onClose }) {
                       <div className="text-right flex flex-col items-end">
                         <p className="text-xl font-bold text-emerald-400">₹{flight.price.toLocaleString()}</p>
                         <p className="text-[9px] text-slate-500 mb-2">per adult</p>
-                        <button className="rounded-xl bg-cyan-300 text-slate-900 px-4 py-1.5 text-xs font-bold transition hover:bg-cyan-200 shadow-[0_0_15px_rgba(103,232,249,0.3)]">
-                          Select
-                        </button>
+                        {flight.bookingUrl ? (
+                          <a href={flight.bookingUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-xl bg-cyan-300 text-slate-900 px-4 py-1.5 text-xs font-bold transition hover:bg-cyan-200 shadow-[0_0_15px_rgba(103,232,249,0.3)]">
+                            Book
+                          </a>
+                        ) : (
+                          <button className="rounded-xl bg-cyan-300 text-slate-900 px-4 py-1.5 text-xs font-bold transition hover:bg-cyan-200 shadow-[0_0_15px_rgba(103,232,249,0.3)]">
+                            Select
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
                 );
               })}
             </div>
+            )}
           </div>
         )}
       </div>

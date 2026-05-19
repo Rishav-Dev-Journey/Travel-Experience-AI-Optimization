@@ -1,14 +1,6 @@
 import { useState, useMemo } from "react";
 
-const MOCK_HOTELS = [
-  { id: 1, name: "Taj Oceanic Resort & Spa", rating: 4.8, reviews: 342, location: "Beachfront", price: 12500, features: ["Pool", "Spa", "Free Breakfast"] },
-  { id: 2, name: "The Grand Horizon", rating: 4.5, reviews: 215, location: "City Center", price: 8200, features: ["Gym", "Bar", "Free WiFi"] },
-  { id: 3, name: "Boutique Heritage Villa", rating: 4.7, reviews: 128, location: "Old Town", price: 6500, features: ["Heritage", "Garden", "Pet Friendly"] },
-  { id: 4, name: "Cozy Backpackers Hostel", rating: 4.3, reviews: 540, location: "Downtown", price: 1200, features: ["Shared Dorm", "Common Room"] },
-  { id: 5, name: "Royal Palm Suites", rating: 4.9, reviews: 410, location: "Luxury District", price: 15400, features: ["Infinity Pool", "Butler"] },
-  { id: 6, name: "Urban Budget Inn", rating: 3.8, reviews: 89, location: "Station Road", price: 2100, features: ["AC", "Free WiFi"] },
-  { id: 7, name: "Sunrise Bay Hotel", rating: 4.2, reviews: 305, location: "Sea View", price: 4500, features: ["Sea View", "Restaurant"] },
-];
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5080";
 
 export default function HotelFinder({ onClose }) {
   const [form, setForm] = useState({
@@ -28,13 +20,44 @@ export default function HotelFinder({ onClose }) {
 
   const isValid = form.city.trim() && form.checkIn && form.checkOut;
 
-  function handleSearch() {
+  async function handleSearch() {
     setSearching(true);
     setResults(null);
-    setTimeout(() => {
+    try {
+      let token = "";
+      try {
+        const val = localStorage.getItem("te_token");
+        if (val) token = JSON.parse(val);
+      } catch (e) {
+        token = localStorage.getItem("te_token") || "";
+      }
+      const res = await fetch(`${API_BASE}/api/hotels/search`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          city: form.city,
+          checkIn: form.checkIn,
+          checkOut: form.checkOut,
+          guests: parseInt(form.guests),
+          rooms: parseInt(form.rooms)
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setResults(data || []);
+      } else {
+        console.error("Failed to fetch hotels");
+        setResults([]);
+      }
+    } catch (err) {
+      console.error(err);
+      setResults([]);
+    } finally {
       setSearching(false);
-      setResults(MOCK_HOTELS);
-    }, 1500);
+    }
   }
 
   const sortedResults = useMemo(() => {
@@ -52,21 +75,21 @@ export default function HotelFinder({ onClose }) {
   }, [results, sortType]);
 
   const cheapestHotelId = useMemo(() => {
-    if (!results) return null;
+    if (!results || results.length === 0) return null;
     return [...results].sort((a, b) => a.price - b.price)[0].id;
   }, [results]);
 
   const topRatedHotelId = useMemo(() => {
-    if (!results) return null;
+    if (!results || results.length === 0) return null;
     return [...results].sort((a, b) => b.rating - a.rating)[0].id;
   }, [results]);
 
   const recommendedHotelId = useMemo(() => {
-    if (!results) return null;
+    if (!results || results.length === 0) return null;
     return [...results].sort((a, b) => (b.rating * 1000 - b.price) - (a.rating * 1000 - a.price))[0].id;
   }, [results]);
 
-  const lowestPrice = results ? Math.min(...results.map(r => r.price)) : 0;
+  const lowestPrice = results && results.length > 0 ? Math.min(...results.map(r => r.price)) : 0;
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center px-4">
@@ -137,13 +160,18 @@ export default function HotelFinder({ onClose }) {
               <button type="button" onClick={() => setResults(null)} className="text-[10px] text-purple-300 hover:underline">New Search →</button>
             </div>
             
-            <div className="space-y-3 overflow-y-auto pr-1 flex-1 pb-4">
-              {sortedResults.map((hotel) => {
-                const isCheapest = hotel.id === cheapestHotelId;
-                const isTopRated = hotel.id === topRatedHotelId;
-                const isRecommended = hotel.id === recommendedHotelId;
+            {results.length === 0 ? (
+              <div className="text-center p-6 text-sm text-slate-400">
+                <p>No hotels found. The AI mock engine might have returned an empty result or an error occurred.</p>
+              </div>
+            ) : (
+              <div className="space-y-3 overflow-y-auto pr-1 flex-1 pb-4">
+                {sortedResults.map((hotel) => {
+                  const isCheapest = hotel.id === cheapestHotelId;
+                  const isTopRated = hotel.id === topRatedHotelId;
+                  const isRecommended = hotel.id === recommendedHotelId;
 
-                return (
+                  return (
                   <div key={hotel.id} className="relative rounded-2xl border border-white/10 bg-slate-800/40 p-4 hover:bg-slate-800/60 hover:border-purple-300/30 transition cursor-pointer flex items-center justify-between">
                     
                     <div className="flex gap-2 absolute -top-2.5 left-4">
@@ -169,14 +197,21 @@ export default function HotelFinder({ onClose }) {
                     <div className="text-right flex flex-col items-end shrink-0 ml-4">
                       <p className="text-xl font-bold text-emerald-400">₹{hotel.price.toLocaleString()}</p>
                       <p className="text-[9px] text-slate-500 mb-2">per night</p>
-                      <button className="rounded-xl bg-purple-300 text-slate-900 px-4 py-1.5 text-xs font-bold transition hover:bg-purple-200 shadow-[0_0_15px_rgba(216,180,254,0.3)]">
-                        Book Stay
-                      </button>
+                      {hotel.bookingUrl ? (
+                        <a href={hotel.bookingUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-xl bg-purple-300 text-slate-900 px-4 py-1.5 text-xs font-bold transition hover:bg-purple-200 shadow-[0_0_15px_rgba(216,180,254,0.3)]">
+                          Book Stay
+                        </a>
+                      ) : (
+                        <button className="rounded-xl bg-purple-300 text-slate-900 px-4 py-1.5 text-xs font-bold transition hover:bg-purple-200 shadow-[0_0_15px_rgba(216,180,254,0.3)]">
+                          Book Stay
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
               })}
             </div>
+            )}
           </div>
         )}
       </div>
