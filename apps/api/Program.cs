@@ -11,6 +11,7 @@ builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
 builder.Services.AddSingleton<PostgresAuthStore>();
 builder.Services.AddSingleton<OtpAuthService>();
 builder.Services.AddSingleton<IEmailOtpSender, AzureEmailOtpSender>();
+builder.Services.AddSingleton<RecommendationEngine>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -160,8 +161,37 @@ app.MapPut("/api/profile", async (UpsertProfileRequest request, HttpRequest http
   return Results.Ok(new { name = profile.Name, homeCity = profile.HomeCity, budget = profile.Budget, interests = profile.Interests });
 });
 
+app.MapPost("/api/recommendations", async (RecommendationRequest request, HttpRequest httpRequest, PostgresAuthStore authStore, RecommendationEngine engine, CancellationToken cancellationToken) =>
+{
+  var token = httpRequest.Headers.Authorization.FirstOrDefault()?.Replace("Bearer ", "").Trim();
+  if (string.IsNullOrEmpty(token)) return Results.Unauthorized();
+  var userId = await authStore.ResolveSessionAsync(token, cancellationToken);
+  if (userId is null) return Results.Unauthorized();
+
+  if (request.BudgetMin < 0 || request.BudgetMax <= request.BudgetMin)
+    return Results.BadRequest(new { message = "Invalid budget range." });
+  if (request.Days < 1 || request.Days > 30)
+    return Results.BadRequest(new { message = "Duration must be between 1 and 30 days." });
+  if (request.Interests.Length == 0 || request.TransportModes.Length == 0)
+    return Results.BadRequest(new { message = "At least one interest and transport mode required." });
+
+  var travelMonth = DateOnly.TryParse(request.StartDate, out var date) ? date.Month : DateTime.UtcNow.Month;
+  var destinations = await authStore.GetAllDestinationsAsync(cancellationToken);
+  var results = engine.Score(destinations, request, travelMonth);
+
+  return Results.Ok(new { results, total = results.Count });
+});
+
 app.Run();
 
 internal sealed record RequestOtpRequest(string Identifier, string Channel);
 internal sealed record VerifyOtpRequest(string ChallengeId, string Otp);
 internal sealed record UpsertProfileRequest(string? Name, string? HomeCity, string? Budget, string[]? Interests);
+internal sealed record RecommendationRequest(
+  string SourceCity,
+  int BudgetMin,
+  int BudgetMax,
+  string StartDate,
+  int Days,
+  string[] Interests,
+  string[] TransportModes);

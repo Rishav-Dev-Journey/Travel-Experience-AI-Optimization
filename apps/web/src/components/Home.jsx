@@ -1,4 +1,6 @@
 import ChatBot from "./ChatBot";
+import TripPlanner from "./TripPlanner";
+import { useState, useEffect } from "react";
 
 const INTEREST_SUGGESTIONS = {
   Beach: { dest: "Goa", tag: "Beach getaway", desc: "Sun, sand & seafood on India's favourite coast", color: "text-cyan-200", bg: "bg-cyan-300/10 border-cyan-300/25", emoji: "🏖️" },
@@ -22,10 +24,40 @@ const QUICK_ACTIONS = [
   { label: "AI Itinerary", icon: "🤖", soon: true },
 ];
 
-export default function Home({ profile, identifier, onEditProfile, onLogout }) {
+export default function Home({ profile, identifier, onEditProfile, onLogout, onFetchRecommendations }) {
   const firstName = profile.name ? profile.name.split(" ")[0] : null;
-  const suggestions = profile.interests.map((i) => INTEREST_SUGGESTIONS[i]).filter(Boolean);
   const budgetInfo = BUDGET_LABEL[profile.budget];
+  const [plannerOpen, setPlannerOpen] = useState(false);
+  const [tripForm, setTripForm] = useState(null);
+  const [recommendations, setRecommendations] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState([]);
+
+  // Load AI suggestions based on profile on mount
+  useEffect(() => {
+    if (!profile.interests?.length) return;
+    const budgetMap = { Budget: [5000, 30000], "Mid-range": [10000, 60000], Luxury: [30000, 150000] };
+    const [bMin, bMax] = budgetMap[profile.budget] ?? [5000, 150000];
+    onFetchRecommendations({
+      sourceCity: profile.homeCity || "Delhi",
+      budgetMin: bMin,
+      budgetMax: bMax,
+      startDate: new Date().toISOString().split("T")[0],
+      days: 5,
+      interests: profile.interests,
+      transport: ["air", "train", "road", "bus"],
+    }).then((results) => setAiSuggestions(results));
+  }, [profile.interests?.join(","), profile.budget]);
+
+  async function handleSearch(form) {
+    setTripForm(form);
+    setPlannerOpen(false);
+    setSearching(true);
+    setRecommendations([]);
+    const results = await onFetchRecommendations(form);
+    setRecommendations(results);
+    setSearching(false);
+  }
 
   return (
     <div className="relative min-h-screen overflow-x-hidden">
@@ -120,11 +152,17 @@ export default function Home({ profile, identifier, onEditProfile, onLogout }) {
         <div className="mt-8">
           <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Quick Actions</p>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {QUICK_ACTIONS.map(({ label, icon }) => (
-              <div
-                key={label}
-                className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/50 p-4 opacity-60"
-              >
+            <button
+              type="button"
+              onClick={() => setPlannerOpen(true)}
+              className="flex flex-col items-center gap-2 rounded-2xl border border-cyan-300/30 bg-cyan-300/10 p-4 transition hover:bg-cyan-300/20"
+            >
+              <span className="text-2xl">🗺️</span>
+              <span className="text-xs font-semibold text-cyan-200">Plan a Trip</span>
+              <span className="rounded-full bg-cyan-300/20 px-2 py-0.5 text-[10px] text-cyan-300">AI Powered</span>
+            </button>
+            {QUICK_ACTIONS.slice(1).map(({ label, icon }) => (
+              <div key={label} className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/50 p-4 opacity-50">
                 <span className="text-2xl">{icon}</span>
                 <span className="text-xs font-semibold text-slate-300">{label}</span>
                 <span className="rounded-full bg-slate-700/60 px-2 py-0.5 text-[10px] text-slate-400">Coming soon</span>
@@ -133,27 +171,115 @@ export default function Home({ profile, identifier, onEditProfile, onLogout }) {
           </div>
         </div>
 
-        {/* AI Suggestions */}
-        <div className="mt-8">
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-            {suggestions.length > 0 ? "AI Picks for You" : "Popular Destinations"}
-          </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {(suggestions.length > 0 ? suggestions : Object.values(INTEREST_SUGGESTIONS)).map(({ dest, tag, desc, color, bg, emoji }) => (
-              <div key={dest} className={`rounded-2xl border p-4 ${bg}`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-xl">{emoji}</span>
-                  <span className="text-[10px] uppercase tracking-widest text-slate-500">AI pick</span>
-                </div>
-                <p className={`mt-2 font-display text-base font-semibold ${color}`}>{dest}</p>
-                <p className="text-xs text-slate-400">{tag}</p>
-                <p className="mt-1 text-xs leading-relaxed text-slate-500">{desc}</p>
-              </div>
-            ))}
+        {/* Trip results */}
+        {searching ? (
+          <div className="mt-6 flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-900/40 p-5">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-300 border-t-transparent" />
+            <p className="text-sm text-slate-400">Finding best destinations for you...</p>
           </div>
+        ) : recommendations.length > 0 ? (
+          <div className="mt-6">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-widest text-cyan-300">🤖 AI Recommendations — {tripForm?.sourceCity} · {tripForm?.days} days</p>
+              <button type="button" onClick={() => setPlannerOpen(true)} className="text-[10px] text-slate-400 hover:text-white">Modify →</button>
+            </div>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {recommendations.map((r, i) => (
+                <div key={r.id} className="relative rounded-2xl border border-white/10 bg-slate-900/60 overflow-hidden">
+                  <img src={r.imageUrl} alt={r.name} className="h-36 w-full object-cover" />
+                  <div className="absolute top-2 left-2 rounded-full bg-cyan-300 px-2 py-0.5 text-[10px] font-bold text-slate-900">#{i + 1} Match</div>
+                  <div className="p-4">
+                    <p className="font-display text-base font-semibold text-white">{r.name}</p>
+                    <p className="mt-1 text-xs text-slate-400 line-clamp-2">{r.description}</p>
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      {r.interests.map((tag) => (
+                        <span key={tag} className="rounded-lg bg-white/10 px-2 py-0.5 text-[10px] text-slate-300">{tag}</span>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex items-center justify-between text-[10px] text-slate-500">
+                      <span>🗓 {r.idealDaysMin}–{r.idealDaysMax} days</span>
+                      <span>🚀 {r.availableTransport.join(", ")}</span>
+                      <span className="text-cyan-400 font-semibold">Score {r.score}/100</span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {r.highlights.slice(0, 3).map((h) => (
+                        <span key={h} className="text-[10px] text-slate-500">• {h}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : tripForm ? (
+          <div className="mt-6 rounded-2xl border border-white/10 bg-slate-900/40 p-5 text-center">
+            <p className="text-sm text-slate-400">No destinations matched your criteria. Try adjusting budget or transport modes.</p>
+            <button type="button" onClick={() => setPlannerOpen(true)} className="mt-3 text-xs text-cyan-300 hover:underline">Modify search →</button>
+          </div>
+        ) : null}
+
+        {/* AI Suggestions based on profile */}
+        <div className="mt-8">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+              {profile.interests?.length > 0 ? "🤖 AI Picks Based on Your Profile" : "Popular Destinations"}
+            </p>
+            {profile.interests?.length === 0 ? (
+              <button type="button" onClick={onEditProfile} className="text-[10px] text-cyan-300 hover:underline">Set interests →</button>
+            ) : null}
+          </div>
+
+          {aiSuggestions.length > 0 ? (
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {aiSuggestions.map((r) => (
+                <div key={r.id} className="rounded-2xl border border-white/10 bg-slate-900/60 overflow-hidden">
+                  <img src={r.imageUrl} alt={r.name} className="h-32 w-full object-cover" />
+                  <div className="p-3">
+                    <div className="flex items-center justify-between">
+                      <p className="font-display text-sm font-semibold text-white">{r.name}</p>
+                      <span className="text-[10px] text-cyan-400 font-semibold">{r.score}/100</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400 line-clamp-2">{r.description}</p>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {r.interests.map((tag) => (
+                        <span key={tag} className="rounded-lg bg-white/10 px-2 py-0.5 text-[10px] text-slate-300">{tag}</span>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-[10px] text-slate-500">🗓 {r.idealDaysMin}–{r.idealDaysMax} days ideal</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : profile.interests?.length > 0 ? (
+            <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+              <div className="h-3 w-3 animate-spin rounded-full border border-cyan-300 border-t-transparent" />
+              Loading suggestions...
+            </div>
+          ) : (
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {Object.values(INTEREST_SUGGESTIONS).map(({ dest, tag, desc, color, bg, emoji }) => (
+                <div key={dest} className={`rounded-2xl border p-4 ${bg}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xl">{emoji}</span>
+                    <span className="text-[10px] uppercase tracking-widest text-slate-500">Popular</span>
+                  </div>
+                  <p className={`mt-2 font-display text-base font-semibold ${color}`}>{dest}</p>
+                  <p className="text-xs text-slate-400">{tag}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">{desc}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
       <ChatBot profile={profile} />
+      {plannerOpen ? (
+        <TripPlanner
+          profile={profile}
+          onSearch={handleSearch}
+          onClose={() => setPlannerOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

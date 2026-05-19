@@ -92,6 +92,22 @@ internal sealed class PostgresAuthStore
       );
 
       create index if not exists ix_user_sessions_user_id on user_sessions(user_id);
+
+      create table if not exists destinations (
+        id uuid primary key,
+        name text not null,
+        country text not null default 'India',
+        description text not null,
+        image_url text not null,
+        interests text[] not null default '{}',
+        budget_min integer not null,
+        budget_max integer not null,
+        ideal_days_min integer not null,
+        ideal_days_max integer not null,
+        best_months integer[] not null default '{}',
+        transport_modes text[] not null default '{}',
+        highlights text[] not null default '{}'
+      );
       """;
 
     await createSchemaCommand.ExecuteNonQueryAsync(cancellationToken);
@@ -412,5 +428,37 @@ internal sealed class PostgresAuthStore
     await using var reader = await command.ExecuteReaderAsync(cancellationToken);
     if (!await reader.ReadAsync(cancellationToken)) return null;
     return reader.GetGuid(0);
+  }
+
+  public async Task<List<DestinationRow>> GetAllDestinationsAsync(CancellationToken cancellationToken = default)
+  {
+    await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+    await using var command = connection.CreateCommand();
+    command.CommandText = """
+      select id, name, country, description, image_url, interests,
+             budget_min, budget_max, ideal_days_min, ideal_days_max,
+             best_months, transport_modes, highlights
+      from destinations;
+      """;
+    await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+    var rows = new List<DestinationRow>();
+    while (await reader.ReadAsync(cancellationToken))
+    {
+      rows.Add(new DestinationRow(
+        reader.GetGuid(0),
+        reader.GetString(1),
+        reader.GetString(2),
+        reader.GetString(3),
+        reader.GetString(4),
+        reader.GetFieldValue<string[]>(5),
+        reader.GetInt32(6),
+        reader.GetInt32(7),
+        reader.GetInt32(8),
+        reader.GetInt32(9),
+        reader.GetFieldValue<int[]>(10),
+        reader.GetFieldValue<string[]>(11),
+        reader.GetFieldValue<string[]>(12)));
+    }
+    return rows;
   }
 }

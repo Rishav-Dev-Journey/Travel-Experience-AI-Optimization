@@ -219,6 +219,26 @@ function App() {
     } catch (_) {}
   }
 
+  async function fetchRecommendations(form) {
+    const res = await fetch(`${API_BASE_URL}/api/recommendations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        sourceCity: form.sourceCity,
+        budgetMin: parseInt(form.budgetMin),
+        budgetMax: parseInt(form.budgetMax),
+        startDate: form.startDate,
+        days: parseInt(form.days),
+        interests: form.interests,
+        transportModes: form.transport,
+      }),
+    });
+    if (res.status === 401) { logout(); return []; }
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.results ?? [];
+  }
+
   return (
     <>
       {step === "home" ? (
@@ -227,6 +247,7 @@ function App() {
           identifier={identifier}
           onEditProfile={goToEditProfile}
           onLogout={logout}
+          onFetchRecommendations={fetchRecommendations}
         />
       ) : (
       <main className="relative min-h-screen overflow-x-hidden px-4 py-6 md:px-8 md:py-10 lg:py-12">
