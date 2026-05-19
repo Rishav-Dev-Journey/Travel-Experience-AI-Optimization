@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.Json;
 using Amazon.BedrockRuntime;
-using Amazon.BedrockRuntime.Model;
 
 namespace TravelExperience.Api;
 
@@ -119,33 +118,9 @@ internal sealed class BedrockRecommendationService
     return (int)(R * c);
   }
 
-  private async Task<string> InvokeClaudeAsync(string prompt, CancellationToken cancellationToken)
-  {
-    var payload = new
-    {
-      anthropic_version = "bedrock-2023-05-31",
-      max_tokens = 1024,
-      messages = new[]
-      {
-        new { role = "user", content = prompt }
-      }
-    };
+  private Task<string> InvokeClaudeAsync(string prompt, CancellationToken cancellationToken) =>
+    BedrockClient.InvokeClaudeAsync(_client, _modelId, prompt, maxTokens: 1024, cancellationToken);
 
-    var request = new InvokeModelRequest
-    {
-      ModelId = _modelId,
-      Body = new MemoryStream(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload))),
-      ContentType = "application/json"
-    };
-
-    var response = await _client.InvokeModelAsync(request, cancellationToken);
-    using var reader = new StreamReader(response.Body);
-    var responseBody = await reader.ReadToEndAsync(cancellationToken);
-    
-    var jsonDoc = JsonDocument.Parse(responseBody);
-    var content = jsonDoc.RootElement.GetProperty("content")[0].GetProperty("text").GetString();
-    return content ?? "[]";
-  }
 
   private List<RecommendationResult> ParseRecommendations(string aiResponse, List<DestinationRow> destinations)
   {

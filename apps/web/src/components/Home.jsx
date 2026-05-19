@@ -1,6 +1,8 @@
 import ChatBot from "./ChatBot";
 import TripPlanner from "./TripPlanner";
 import DestinationDetail from "./DestinationDetail";
+import AIItinerary from "./AIItinerary";
+import ItineraryDisplay from "./ItineraryDisplay";
 import { useState, useEffect } from "react";
 
 const INTEREST_SUGGESTIONS = {
@@ -25,7 +27,7 @@ const QUICK_ACTIONS = [
   { label: "AI Itinerary", icon: "🤖", soon: true },
 ];
 
-export default function Home({ profile, identifier, onEditProfile, onLogout, onFetchRecommendations }) {
+export default function Home({ profile, identifier, onEditProfile, onLogout, onFetchRecommendations, onGenerateItinerary, onFetchRecentItineraries }) {
   const firstName = profile.name ? profile.name.split(" ")[0] : null;
   const budgetInfo = BUDGET_LABEL[profile.budget];
   const [plannerOpen, setPlannerOpen] = useState(false);
@@ -35,6 +37,9 @@ export default function Home({ profile, identifier, onEditProfile, onLogout, onF
   const [aiSuggestions, setAiSuggestions] = useState([]);
   const [recommendationEngine, setRecommendationEngine] = useState(null);
   const [selectedDestination, setSelectedDestination] = useState(null);
+  const [itineraryModalOpen, setItineraryModalOpen] = useState(false);
+  const [generatedItinerary, setGeneratedItinerary] = useState(null);
+  const [recentItineraries, setRecentItineraries] = useState([]);
 
   // Load AI suggestions based on profile on mount
   useEffect(() => {
@@ -58,6 +63,23 @@ export default function Home({ profile, identifier, onEditProfile, onLogout, onF
       setAiSuggestions(response.results || []);
     });
   }, [profile.interests?.join(","), profile.budget]);
+
+  // Load recent itineraries
+  useEffect(() => {
+    if (!onFetchRecentItineraries) return;
+    onFetchRecentItineraries().then(setRecentItineraries).catch(() => {});
+  }, []);
+
+  async function handleGenerateItinerary(request) {
+    const itinerary = await onGenerateItinerary(request);
+    if (itinerary) {
+      setGeneratedItinerary(itinerary);
+      setItineraryModalOpen(false);
+      if (onFetchRecentItineraries) {
+        onFetchRecentItineraries().then(setRecentItineraries).catch(() => {});
+      }
+    }
+  }
 
   async function handleSearch(form) {
     console.log('🔍 handleSearch called with:', form);
@@ -177,7 +199,16 @@ export default function Home({ profile, identifier, onEditProfile, onLogout, onF
               <span className="text-xs font-semibold text-cyan-200">Plan a Trip</span>
               <span className="rounded-full bg-cyan-300/20 px-2 py-0.5 text-[10px] text-cyan-300">AI Powered</span>
             </button>
-            {QUICK_ACTIONS.slice(1).map(({ label, icon }) => (
+            <button
+              type="button"
+              onClick={() => setItineraryModalOpen(true)}
+              className="flex flex-col items-center gap-2 rounded-2xl border border-purple-300/30 bg-purple-300/10 p-4 transition hover:bg-purple-300/20"
+            >
+              <span className="text-2xl">🤖</span>
+              <span className="text-xs font-semibold text-purple-200">AI Itinerary</span>
+              <span className="rounded-full bg-purple-300/20 px-2 py-0.5 text-[10px] text-purple-300">AI Powered</span>
+            </button>
+            {QUICK_ACTIONS.slice(1, 3).map(({ label, icon }) => (
               <div key={label} className="flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/50 p-4 opacity-50">
                 <span className="text-2xl">{icon}</span>
                 <span className="text-xs font-semibold text-slate-300">{label}</span>
@@ -314,6 +345,32 @@ export default function Home({ profile, identifier, onEditProfile, onLogout, onF
             </div>
           )}
         </div>
+
+        {/* Recent AI Itineraries */}
+        {recentItineraries.length > 0 && (
+          <div className="mt-8">
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+              🗺️ Recent AI Itineraries
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {recentItineraries.map((itinerary) => (
+                <div
+                  key={itinerary.id}
+                  className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 cursor-pointer hover:border-purple-300/30 transition"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="font-display text-sm font-semibold text-white">{itinerary.destination}</p>
+                    <span className="text-[10px] text-purple-400">{itinerary.totalDays} days</span>
+                  </div>
+                  <p className="text-xs text-slate-400 line-clamp-2">{itinerary.overview}</p>
+                  <p className="mt-2 text-[10px] text-slate-500">
+                    {new Date(itinerary.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       <ChatBot profile={profile} />
       {plannerOpen ? (
@@ -328,6 +385,18 @@ export default function Home({ profile, identifier, onEditProfile, onLogout, onF
           destination={selectedDestination}
           numberOfPeople={parseInt(tripForm?.numberOfPeople || "1")}
           onClose={() => setSelectedDestination(null)}
+        />
+      ) : null}
+      {itineraryModalOpen ? (
+        <AIItinerary
+          onClose={() => setItineraryModalOpen(false)}
+          onGenerate={handleGenerateItinerary}
+        />
+      ) : null}
+      {generatedItinerary ? (
+        <ItineraryDisplay
+          itinerary={generatedItinerary}
+          onClose={() => setGeneratedItinerary(null)}
         />
       ) : null}
     </div>

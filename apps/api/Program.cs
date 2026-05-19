@@ -18,6 +18,7 @@ var awsRegion = builder.Configuration["AWS:Region"] ?? "us-east-1";
 builder.Services.AddSingleton(new AmazonBedrockRuntimeClient(Amazon.RegionEndpoint.GetBySystemName(awsRegion)));
 var bedrockModelId = builder.Configuration["AWS:Bedrock:ModelId"] ?? "anthropic.claude-3-haiku-20240307-v1:0";
 builder.Services.AddSingleton(sp => new BedrockRecommendationService(sp.GetRequiredService<AmazonBedrockRuntimeClient>(), bedrockModelId));
+builder.Services.AddSingleton(sp => new AIItineraryService(sp.GetRequiredService<AmazonBedrockRuntimeClient>(), bedrockModelId));
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -210,6 +211,51 @@ app.MapPost("/api/recommendations", async (RecommendationRequest request, HttpRe
   }
 
   return Results.Ok(new { results, total = results.Count, engine });
+});
+
+app.MapPost("/api/itinerary/generate", async (ItineraryRequest request, HttpRequest httpRequest, PostgresAuthStore authStore, AIItineraryService itineraryService, ILogger<Program> logger, CancellationToken cancellationToken) =>
+{
+  var token = httpRequest.Headers.Authorization.FirstOrDefault()?.Replace("Bearer ", "").Trim();
+  if (string.IsNullOrEmpty(token)) return Results.Unauthorized();
+  var userId = await authStore.ResolveSessionAsync(token, cancellationToken);
+  if (userId is null) return Results.Unauthorized();
+
+  if (string.IsNullOrWhiteSpace(request.Destination))
+    return Results.BadRequest(new { message = "Destination is required." });
+  if (request.Days < 1 || request.Days > 15)
+    return Results.BadRequest(new { message = "Duration must be between 1 and 15 days." });
+  if (request.Interests.Length == 0)
+    return Results.BadRequest(new { message = "At least one interest is required." });
+
+  try
+  {
+    logger.LogInformation("Generating itinerary for {Destination}, {Days} days", request.Destination, request.Days);
+    // Service tries Bedrock first, falls back to rule-based if Bedrock is unavailable
+    var itinerary = await itineraryService.GenerateItineraryAsync(request, logger, cancellationToken);
+
+    if (itinerary == null)
+      return Results.Problem(detail: "Unable to generate itinerary. Please try again.", statusCode: 500, title: "Itinerary Error");
+
+    await authStore.SaveItineraryAsync(userId.Value, itinerary, cancellationToken);
+    logger.LogInformation("Itinerary saved for {Destination}", request.Destination);
+    return Results.Ok(itinerary);
+  }
+  catch (Exception ex)
+  {
+    logger.LogError(ex, "Unexpected error generating itinerary");
+    return Results.Problem(detail: ex.Message, statusCode: 500, title: "Itinerary Generation Failed");
+  }
+});
+
+app.MapGet("/api/itinerary/recent", async (HttpRequest httpRequest, PostgresAuthStore authStore, CancellationToken cancellationToken) =>
+{
+  var token = httpRequest.Headers.Authorization.FirstOrDefault()?.Replace("Bearer ", "").Trim();
+  if (string.IsNullOrEmpty(token)) return Results.Unauthorized();
+  var userId = await authStore.ResolveSessionAsync(token, cancellationToken);
+  if (userId is null) return Results.Unauthorized();
+
+  var itineraries = await authStore.GetRecentItinerariesAsync(userId.Value, cancellationToken);
+  return Results.Ok(new { itineraries });
 });
 
 app.Run();

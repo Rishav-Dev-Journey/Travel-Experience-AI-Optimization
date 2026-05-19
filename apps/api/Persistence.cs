@@ -17,6 +17,13 @@ internal sealed record UserProfileRow(
   string[] Interests,
   DateTimeOffset UpdatedAt);
 
+internal sealed record ItinerarySummary(
+  Guid Id,
+  string Destination,
+  int TotalDays,
+  string Overview,
+  DateTimeOffset CreatedAt);
+
 internal sealed record OtpChallengeRow(
   Guid Id,
   string ChallengeId,
@@ -106,8 +113,27 @@ internal sealed class PostgresAuthStore
         ideal_days_max integer not null,
         best_months integer[] not null default '{}',
         transport_modes text[] not null default '{}',
-        highlights text[] not null default '{}'
+        highlights text[] not null default '{}',
+        price_per_person integer not null default 0,
+        latitude numeric(9,6) null,
+        longitude numeric(9,6) null
       );
+
+      create table if not exists itineraries (
+        id uuid primary key,
+        user_id uuid not null references auth_users(id) on delete cascade,
+        destination text not null,
+        total_days integer not null,
+        overview text not null,
+        day_plans jsonb not null default '[]',
+        packing_list text[] not null default '{}',
+        budget_breakdown text[] not null default '{}',
+        travel_tips text[] not null default '{}',
+        sources text[] not null default '{}',
+        created_at timestamptz not null
+      );
+
+      create index if not exists ix_itineraries_user_id on itineraries(user_id);
       """;
 
     await createSchemaCommand.ExecuteNonQueryAsync(cancellationToken);
@@ -464,5 +490,57 @@ internal sealed class PostgresAuthStore
         reader.IsDBNull(15) ? null : (double?)reader.GetDecimal(15)));
     }
     return rows;
+  }
+
+  public async Task SaveItineraryAsync(Guid userId, ItineraryResponse itinerary, CancellationToken cancellationToken = default)
+  {
+    await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+    await using var command = connection.CreateCommand();
+    command.CommandText = """
+      INSERT INTO itineraries (id, user_id, destination, total_days, overview, day_plans, packing_list, budget_breakdown, travel_tips, sources, created_at)
+      VALUES (@id, @user_id, @destination, @total_days, @overview, @day_plans, @packing_list, @budget_breakdown, @travel_tips, @sources, @created_at);
+      """;
+    command.Parameters.AddWithValue("id", Guid.NewGuid());
+    command.Parameters.AddWithValue("user_id", userId);
+    command.Parameters.AddWithValue("destination", itinerary.Destination);
+    command.Parameters.AddWithValue("total_days", itinerary.TotalDays);
+    command.Parameters.AddWithValue("overview", itinerary.Overview);
+    var dayPlansParam = new Npgsql.NpgsqlParameter("day_plans", NpgsqlTypes.NpgsqlDbType.Jsonb)
+    {
+      Value = System.Text.Json.JsonSerializer.Serialize(itinerary.DayPlans)
+    };
+    command.Parameters.Add(dayPlansParam);
+    command.Parameters.AddWithValue("packing_list", itinerary.PackingList);
+    command.Parameters.AddWithValue("budget_breakdown", itinerary.BudgetBreakdown);
+    command.Parameters.AddWithValue("travel_tips", itinerary.TravelTips);
+    command.Parameters.AddWithValue("sources", itinerary.Sources);
+    command.Parameters.AddWithValue("created_at", DateTimeOffset.UtcNow);
+    await command.ExecuteNonQueryAsync(cancellationToken);
+  }
+
+  public async Task<List<ItinerarySummary>> GetRecentItinerariesAsync(Guid userId, CancellationToken cancellationToken = default)
+  {
+    await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+    await using var command = connection.CreateCommand();
+    command.CommandText = """
+      SELECT id, destination, total_days, overview, created_at
+      FROM itineraries
+      WHERE user_id = @user_id
+      ORDER BY created_at DESC
+      LIMIT 10;
+      """;
+    command.Parameters.AddWithValue("user_id", userId);
+    await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+    var results = new List<ItinerarySummary>();
+    while (await reader.ReadAsync(cancellationToken))
+    {
+      results.Add(new ItinerarySummary(
+        reader.GetGuid(0),
+        reader.GetString(1),
+        reader.GetInt32(2),
+        reader.GetString(3),
+        ReadUtcOffset(reader, 4)));
+    }
+    return results;
   }
 }

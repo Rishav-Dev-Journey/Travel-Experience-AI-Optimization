@@ -246,6 +246,38 @@ function App() {
     return { results: data.results ?? [], engine: data.engine ?? null, total: data.total ?? 0 };
   }
 
+  async function generateItinerary(request) {
+    console.log('🗺️ Generating itinerary for:', request);
+    const res = await fetch(`${API_BASE_URL}/api/itinerary/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(request),
+    });
+    if (res.status === 401) { logout(); return null; }
+    if (!res.ok) {
+      let errMsg = `Itinerary generation failed (${res.status})`;
+      try {
+        const errData = await res.json();
+        errMsg = errData.detail || errData.message || errMsg;
+      } catch (_) {}
+      console.error('❌ Itinerary generation failed:', res.status, errMsg);
+      throw new Error(errMsg);
+    }
+    const data = await res.json();
+    console.log('✅ Itinerary generated:', data);
+    return data;
+  }
+
+  async function fetchRecentItineraries() {
+    const res = await fetch(`${API_BASE_URL}/api/itinerary/recent`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 401) { logout(); return []; }
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.itineraries ?? [];
+  }
+
   return (
     <>
       {step === "home" ? (
@@ -255,6 +287,8 @@ function App() {
           onEditProfile={goToEditProfile}
           onLogout={logout}
           onFetchRecommendations={fetchRecommendations}
+          onGenerateItinerary={generateItinerary}
+          onFetchRecentItineraries={fetchRecentItineraries}
         />
       ) : (
       <main className="relative min-h-screen overflow-x-hidden px-4 py-6 md:px-8 md:py-10 lg:py-12">
